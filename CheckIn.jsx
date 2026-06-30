@@ -35,6 +35,9 @@ const COMPANIES = [
   },
 ];
 
+// ล็อกกะจากระบบหลังบ้าน: true = พนักงานเปลี่ยนกะเองไม่ได้ (กะถูกกำหนดมาจากแอดมิน)
+const LOCK_SHIFT = true;
+
 // ลำดับการตอกบัตร 4 ครั้ง/วัน
 const PUNCHES = [
   { key: "in", label: "เข้างาน (เช้า)", compare: "in" },
@@ -232,10 +235,17 @@ export default function CheckIn() {
               {company.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
-          <select value={shiftId} onChange={(e) => { setShiftId(e.target.value); resetDay(); }}
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm">
-            {company.shifts.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.start}–{s.end} น.)</option>)}
-          </select>
+          {LOCK_SHIFT ? (
+            <div className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-600">
+              <span>กะ: {shift.name} ({shift.start}–{shift.end} น.)</span>
+              <span className="text-xs text-slate-400">🔒 ล็อกจากระบบ</span>
+            </div>
+          ) : (
+            <select value={shiftId} onChange={(e) => { setShiftId(e.target.value); resetDay(); }}
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm">
+              {company.shifts.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.start}–{s.end} น.)</option>)}
+            </select>
+          )}
         </div>
 
         {/* ไทม์ไลน์ 4 ครั้ง */}

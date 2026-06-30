@@ -16,8 +16,17 @@ const RULES = {
   otRatePerHour: 25,            // OT บาท/ชม.
   lateGraceMinutesPerMonth: 10, // ผ่อนผันสายสะสมทั้งงวด (นาที)
   lateRatePerMinute: 5,         // ส่วนเกินผ่อนผัน หักนาทีละ (บาท)
-  otRoundingMinutes: 30,        // ปัดOTเป็นช่วงละ (นาที) — 0 = ไม่ปัด
+  otRoundUpAtMinutes: 45,       // OT ปัดเป็นชั่วโมงเต็ม: เศษ ≥ ค่านี้ ปัดขึ้น 1 ชม. / ต่ำกว่าปัดทิ้ง
 };
+
+// ปัด OT เป็นชั่วโมงเต็ม — เศษ ≥ otRoundUpAtMinutes (เช่น 45 น.) ปัดขึ้น 1 ชม., ต่ำกว่าปัดทิ้ง
+function roundOtMinutes(min) {
+  if (min <= 0) return 0;
+  const hours = Math.floor(min / 60);
+  const rem = min % 60;
+  const extra = rem >= RULES.otRoundUpAtMinutes ? 1 : 0;
+  return (hours + extra) * 60;
+}
 
 const SHIFT = { name: "กะเช้า", start: "08:00", end: "17:00" };
 
@@ -70,7 +79,7 @@ function dayCalc(d) {
   const lateMin = ci != null ? Math.max(0, ci - toMin(SHIFT.start)) : 0;
   // OT = เลิกงานหลังเวลากะ
   let otMin = co != null ? Math.max(0, co - toMin(SHIFT.end)) : 0;
-  if (RULES.otRoundingMinutes > 0) otMin = Math.floor(otMin / RULES.otRoundingMinutes) * RULES.otRoundingMinutes;
+  otMin = roundOtMinutes(otMin);
   return { present, workedMin, lateMin, otMin };
 }
 
@@ -183,7 +192,7 @@ export default function Timesheet() {
             </tbody>
           </table>
         </div>
-        <p className="px-1 text-xs text-slate-400">ช่องสีเหลือง = ถูกแก้ไขจากค่าที่ตอกจริง · OT ปัดเป็นช่วงละ {RULES.otRoundingMinutes} นาที</p>
+        <p className="px-1 text-xs text-slate-400">ช่องสีเหลือง = ถูกแก้ไขจากค่าที่ตอกจริง · OT ปัดเป็นชั่วโมงเต็ม (เศษตั้งแต่ {RULES.otRoundUpAtMinutes} นาที ปัดขึ้น 1 ชม., ต่ำกว่าปัดทิ้ง)</p>
 
         {/* สรุปงวด */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

@@ -1,24 +1,22 @@
 import { supabase, isSupabaseReady } from "./supabase.js";
 
 /**
- * Data layer — ทุกฟังก์ชันปลอดภัยเมื่อยังไม่ได้ต่อ Supabase
- * (คืน null/[] แล้วให้ UI ใช้ข้อมูลเดโมแทน)
+ * Data layer — ปลอดภัยเมื่อยังไม่ต่อ Supabase (คืน undefined/null/[] แล้วให้ UI ใช้เดโม)
  */
 
-// ---------- ล็อกอินด้วย PIN ----------
-// คืน employee (ไม่มี pin) ถ้า PIN ถูก, คืน null ถ้าผิด, คืน undefined ถ้าไม่ได้ต่อ DB
-export async function loginByPin(pin) {
-  if (!isSupabaseReady) return undefined;          // โหมดเดโม → ให้ caller เทียบ DEMO_PIN
-  const { data, error } = await supabase.rpc("login_by_pin", { p_pin: pin });
-  if (error) {
-    console.error("loginByPin error:", error.message);
-    return undefined;                              // มีปัญหา DB → ตกไปโหมดเดโม
-  }
-  return (data && data[0]) || null;                // null = PIN ผิด
+// ---------- ล็อกอิน user + password (req 7) ----------
+export async function loginByCredentials(username, password) {
+  if (!isSupabaseReady) return undefined;         // โหมดเดโม
+  const { data, error } = await supabase.rpc("login_by_credentials", {
+    p_username: username,
+    p_password: password,
+  });
+  if (error) { console.error("login error:", error.message); return undefined; }
+  return (data && data[0]) || null;               // null = user/pass ผิด
 }
 
-// ---------- ตัวเลือกบริษัท/สาขา/กะ (สำหรับหน้าเช็คอิน) ----------
-export async function fetchCompanies() {
+// ---------- โครงสร้างองค์กร ----------
+export async function fetchOrg() {
   if (!isSupabaseReady) return null;
   const [{ data: companies }, { data: branches }, { data: shifts }] = await Promise.all([
     supabase.from("companies").select("*").order("name"),
@@ -26,69 +24,105 @@ export async function fetchCompanies() {
     supabase.from("shifts").select("*"),
   ]);
   if (!companies) return null;
-  return companies.map((c) => ({
+  return { companies, branches: branches || [], shifts: shifts || [] };
+}
+
+// รูปแบบซ้อน (companies → branches/shifts) สำหรับหน้าเช็คอิน
+export async function fetchCompanies() {
+  const org = await fetchOrg();
+  if (!org) return null;
+  return org.companies.map((c) => ({
     id: c.id,
     name: c.name,
-    branches: (branches || [])
-      .filter((b) => b.company_id === c.id)
+    branches: org.branches.filter((b) => b.company_id === c.id)
       .map((b) => ({ id: b.id, name: b.name, lat: b.lat, lng: b.lng, radius: b.radius })),
-    shifts: (shifts || [])
-      .filter((s) => s.company_id === c.id)
+    shifts: org.shifts.filter((s) => s.company_id === c.id)
       .map((s) => ({ id: s.id, name: s.name, start: s.start_time, end: s.end_time })),
   }));
 }
 
-// ---------- บันทึกการตอกบัตร ----------
+export async function listEmployees() {
+  if (!isSupabaseReady) return null;
+  const { data, error } = await supabase.rpc("list_employees");
+  if (error) { console.error("listEmployees:", error.message); return null; }
+  return data;
+}
+
+// ---------- การตอกบัตร ----------
 export async function savePunch({ employeeId, punchType, lat, lng, distance, branchId }) {
   if (!isSupabaseReady) return { demo: true };
   const { error } = await supabase.from("attendance_logs").insert({
-    employee_id: employeeId,
-    punch_type: punchType,
-    lat,
-    lng,
-    distance,
-    branch_id: branchId,
+    employee_id: employeeId, punch_type: punchType, lat, lng, distance, branch_id: branchId,
   });
-  if (error) {
-    console.error("savePunch error:", error.message);
-    return { error: error.message };
-  }
+  if (error) { console.error("savePunch:", error.message); return { error: error.message }; }
   return { ok: true };
 }
 
-// ---------- การตอกบัตรของพนักงานวันนี้ ----------
 export async function fetchTodayPunches(employeeId) {
   if (!isSupabaseReady) return null;
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
+  const start = new Date(); start.setHours(0, 0, 0, 0);
   const { data, error } = await supabase
-    .from("attendance_logs")
-    .select("*")
-    .eq("employee_id", employeeId)
-    .gte("ts", start.toISOString())
+    .from("attendance_logs").select("*")
+    .eq("employee_id", employeeId).gte("ts", start.toISOString())
     .order("ts", { ascending: true });
-  if (error) {
-    console.error("fetchTodayPunches error:", error.message);
-    return null;
-  }
+  if (error) { console.error("fetchTodayPunches:", error.message); return null; }
   return data;
 }
 
-// ---------- รายชื่อพนักงาน (สำหรับหน้า Timesheet/Payslip ฝั่งแอดมิน) ----------
-// หมายเหตุ: view นี้ไม่ส่ง pin (ดึงจาก attendance ผ่านการ join ไม่ได้เพราะ RLS ปิด employees)
-// ระบบจริงควรทำ RPC/มุมมองสำหรับแอดมินโดยเฉพาะ — เฟสนี้ยังใช้ข้อมูลเดโมในสองหน้านั้น
 export async function fetchPeriodPunches(employeeId, fromISO, toISO) {
   if (!isSupabaseReady) return null;
   const { data, error } = await supabase
-    .from("attendance_logs")
-    .select("*")
-    .eq("employee_id", employeeId)
-    .gte("ts", fromISO)
-    .lte("ts", toISO)
+    .from("attendance_logs").select("*")
+    .eq("employee_id", employeeId).gte("ts", fromISO).lte("ts", toISO)
     .order("ts", { ascending: true });
-  if (error) {
-    console.error("fetchPeriodPunches error:", error.message);
-    return null;
-  }
+  if (error) { console.error("fetchPeriodPunches:", error.message); return null; }
   return data;
+}
+
+// ---------- บันทึกหักเงิน (แก้บั๊ก deduct_logs) ----------
+export async function saveDeduction({ employeeId, period, type, amount, note, createdBy, createdByName }) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("deduct_logs").insert({
+    employee_id: employeeId, period, type, amount, note,
+    created_by: createdBy, created_by_name: createdByName,
+  });
+  if (error) { console.error("saveDeduction:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+
+export async function listDeductions(period) {
+  if (!isSupabaseReady) return null;
+  let q = supabase.from("deduct_logs").select("*").order("created_at", { ascending: false });
+  if (period) q = q.eq("period", period);
+  const { data, error } = await q;
+  if (error) { console.error("listDeductions:", error.message); return null; }
+  return data;
+}
+
+// ---------- คำขออนุมัติ (โชว์ชื่อผู้อนุมัติ — req 3,4,6) ----------
+export async function listApprovals(status = "pending") {
+  if (!isSupabaseReady) return null;
+  const { data, error } = await supabase
+    .from("approvals").select("*").eq("status", status)
+    .order("created_at", { ascending: false });
+  if (error) { console.error("listApprovals:", error.message); return null; }
+  return data;
+}
+
+export async function decideApproval({ id, status, approverId, approverName }) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("approvals").update({
+    status, approver_id: approverId, approver_name: approverName,
+    decided_at: new Date().toISOString(),
+  }).eq("id", id);
+  if (error) { console.error("decideApproval:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+
+// ---------- กำหนด/เปลี่ยนกะ (req 6) ----------
+export async function setEmployeeShift(employeeId, shiftId) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("employees").update({ shift_id: shiftId }).eq("id", employeeId);
+  if (error) { console.error("setEmployeeShift:", error.message); return { error: error.message }; }
+  return { ok: true };
 }

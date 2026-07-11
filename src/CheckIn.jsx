@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { fetchCompanies, savePunch, fetchTodayPunches } from "./lib/db.js";
+import { isBackOffice } from "./lib/rules.js";
 
 /**
  * แอปเช็คอินพนักงาน (Standalone PWA) — เช็คอินเข้า/เช็คเอาออก
@@ -39,9 +40,16 @@ const COMPANIES = [
 // ล็อกกะจากระบบหลังบ้าน: true = พนักงานเปลี่ยนกะเองไม่ได้ (กะถูกกำหนดมาจากแอดมิน)
 const LOCK_SHIFT = true;
 
-// ลำดับการเช็ค 2 ครั้ง/วัน
-const PUNCHES = [
+// ลำดับการเช็ค — หน้าร้าน: เข้า/เลิก (2 ครั้ง)
+const FRONT_PUNCHES = [
   { key: "in", label: "เช็คอินเข้างาน", short: "เข้างาน", compare: "in" },
+  { key: "out", label: "เช็คเอาเลิกงาน", short: "เลิกงาน", compare: "out" },
+];
+// หลังร้าน: เข้า / พักเที่ยงออก / พักเที่ยงเข้า / เลิก (พักเที่ยงไม่ต้องจับ GPS — req 5)
+const BACK_PUNCHES = [
+  { key: "in", label: "เช็คอินเข้างาน", short: "เข้างาน", compare: "in" },
+  { key: "lunch_out", label: "สแกนพักเที่ยง (ออก)", short: "พักออก", compare: null, noGps: true },
+  { key: "lunch_in", label: "สแกนพักเที่ยง (เข้า)", short: "พักเข้า", compare: null, noGps: true },
   { key: "out", label: "เช็คเอาเลิกงาน", short: "เลิกงาน", compare: "out" },
 ];
 
@@ -93,6 +101,10 @@ export default function CheckIn({ employee }) {
   const company = companies.find((c) => c.id === companyId) || companies[0];
   const branch = company.branches.find((b) => b.id === branchId) || company.branches[0];
   const shift = company.shifts.find((s) => s.id === shiftId) || company.shifts[0];
+
+  // หลังร้าน = สแกนพักเที่ยงด้วย (4 ครั้ง) · หน้าร้าน = เข้า/เลิก (2 ครั้ง)
+  const backOffice = isBackOffice(employee);
+  const PUNCHES = backOffice ? BACK_PUNCHES : FRONT_PUNCHES;
 
   const [now, setNow] = useState(new Date());
   const [done, setDone] = useState([]);            // records ที่เช็คแล้ววันนี้ [in, out]
@@ -153,7 +165,8 @@ export default function CheckIn({ employee }) {
     [coords, branch]
   );
   const inRange = distance != null && distance <= branch.radius;
-  const ready = inRange && !dayComplete;
+  const noGps = Boolean(current?.noGps);          // พักเที่ยงหลังร้าน — ไม่ต้องจับ GPS (req 5)
+  const ready = !dayComplete && (noGps || inRange);
 
   function getLocation() {
     setGpsError(null);
@@ -221,8 +234,8 @@ export default function CheckIn({ employee }) {
   const timeStr = now.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const dateStr = now.toLocaleDateString("th-TH", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
-  const recIn = done[0];
-  const recOut = done[1];
+  const recIn = done.find((d) => d.key === "in");
+  const recOut = done.find((d) => d.key === "out");
   const statusText = dayComplete ? "เลิกงานแล้ว" : recIn ? "กำลังทำงาน" : "ยังไม่เข้า";
   const isOut = current && current.compare === "out";   // ปุ่มเช็คเอา = สีฟ้า
   const accent = isOut ? "sky" : "emerald";
@@ -291,20 +304,29 @@ export default function CheckIn({ employee }) {
             </div>
           ) : (
             <>
-              {/* แถบสถานะ GPS */}
-              <button onClick={getLocation} disabled={gpsLoading}
-                className="mx-auto mb-4 flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600">
-                📍 {gpsLoading ? "กำลังตรวจ GPS…" : "ตรวจ GPS"}
-              </button>
-
-              {coords && (
-                <div className={`mb-4 rounded-xl p-3 text-sm ${inRange ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-700"}`}>
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">{inRange ? "✓ อยู่ในพื้นที่ร้าน" : "✗ อยู่นอกพื้นที่ร้าน"}</span>
-                    <span className="tabular-nums">ห่าง {distance} ม.</span>
-                  </div>
-                  <div className="mt-1 text-xs opacity-70">อนุญาตในรัศมี {branch.radius} ม. จาก {branch.name}</div>
+              {noGps ? (
+                /* พักเที่ยงหลังร้าน — ไม่ต้องจับ GPS (req 5) */
+                <div className="mx-auto mb-4 flex items-center gap-2 rounded-full bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700">
+                  🍜 พักเที่ยง — ไม่ต้องเช็ค GPS (พักไม่เกิน 1 ชม. ไม่หักเงิน)
                 </div>
+              ) : (
+                <>
+                  {/* แถบสถานะ GPS */}
+                  <button onClick={getLocation} disabled={gpsLoading}
+                    className="mx-auto mb-4 flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600">
+                    📍 {gpsLoading ? "กำลังตรวจ GPS…" : "ตรวจ GPS"}
+                  </button>
+
+                  {coords && (
+                    <div className={`mb-4 rounded-xl p-3 text-sm ${inRange ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-700"}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold">{inRange ? "✓ อยู่ในพื้นที่ร้าน" : "✗ อยู่นอกพื้นที่ร้าน"}</span>
+                        <span className="tabular-nums">ห่าง {distance} ม.</span>
+                      </div>
+                      <div className="mt-1 text-xs opacity-70">อนุญาตในรัศมี {branch.radius} ม. จาก {branch.name}</div>
+                    </div>
+                  )}
+                </>
               )}
               {gpsError && <p className="mb-3 text-center text-xs text-rose-500">{gpsError}</p>}
 
@@ -322,7 +344,7 @@ export default function CheckIn({ employee }) {
               </button>
 
               <p className="mt-4 text-center text-sm text-slate-400">
-                {ready ? "แตะปุ่มเพื่อบันทึกเวลา" : "กด \"ตรวจ GPS\" ให้อยู่ในพื้นที่ร้านก่อน"}
+                {ready ? "แตะปุ่มเพื่อบันทึกเวลา" : noGps ? "แตะปุ่มเพื่อบันทึกพักเที่ยง" : "กด \"ตรวจ GPS\" ให้อยู่ในพื้นที่ร้านก่อน"}
               </p>
             </>
           )}

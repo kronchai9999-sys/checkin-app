@@ -1,58 +1,52 @@
-# แอปเช็คอินพนักงาน (เบเกอร์บรรจุภัณฑ์)
+# ระบบ HR เช็คอิน + เงินเดือน (ร้านเบเกอรี่บรรจุภัณฑ์ กาฬสินธุ์)
 
-แอปลงเวลาทำงานสำหรับพนักงาน — เข้าสู่ระบบด้วย PIN, เช็คอิน/เช็คเอาด้วย GPS,
-ตรวจตารางเวลา และดูสลิปเงินเดือน
+แอป HR หลายบทบาท — เข้าสู่ระบบด้วย **user + password**, เช็คอิน/เช็คเอาด้วย GPS,
+พนักงานหลังร้านสแกนพักเที่ยง, หัวหน้า/ผู้บริหารอนุมัติ-บันทึกหักเงิน-กำหนดกะ,
+ตรวจตารางเวลา + OT และดูสลิปเงินเดือน
 
 ## เทคโนโลยี
-- React 18 + Vite
-- Tailwind CSS
+- React 18 + Vite + Tailwind CSS
+- Supabase (Postgres + RLS + RPC)
 
-## รันในเครื่อง
-```bash
-npm install
-npm run dev
-```
-เปิด http://localhost:5173
+## บทบาท (role)
+| role | เห็นแท็บ | อธิบาย |
+|------|---------|--------|
+| `employee` พนักงาน | เช็คอิน · ตารางเวลา · สลิป | หลังร้าน (`department=back`) มีสแกนพักเที่ยง + กะถูกล็อก |
+| `head` หัวหน้า | + อนุมัติ · หักเงิน · กำหนดกะ | อนุมัติได้ทุกอย่าง **ยกเว้น** แก้เวลาทำงาน/OT |
+| `exec` ผู้บริหาร | ทุกแท็บ | อนุมัติได้หมด รวมแก้เวลา/OT |
 
-- **PIN ทดสอบ:** `123456` (แก้ได้ที่ `src/PinLogin.jsx` → `DEMO_PIN`)
+## กติกาที่ฝังไว้ (ตามที่กำหนด)
+1. **OT** เศษ ≥ 45 นาที ปัดขึ้น 1 ชม. / ต่ำกว่าปัดทิ้ง — `src/lib/rules.js`
+2. **หลังร้านล็อกกะ** — พนักงานหลังร้านเปลี่ยนกะเองไม่ได้ (ตั้งจากหน้า “กำหนดกะ”)
+3. **หัวหน้าอนุมัติได้ทุกอย่าง ยกเว้นแก้เวลา/OT** — `canApprove()`
+4. **โชว์ชื่อผู้อนุมัติ** — บันทึก `approver_name` ทุกครั้ง
+5. **หลังร้านพักเที่ยงยืดหยุ่น** — สแกนออก/เข้าเที่ยง, ≤ 60 นาที ไม่หัก, ช่วงเที่ยงไม่จับ GPS
+6. **กำหนดกะเฉพาะหัวหน้า/ผู้บริหาร** — `canSetShift()`
+7. **ล็อกอิน user + password** — `src/Login.jsx` + RPC `login_by_credentials`
 
-## หน้าจอ
-| หน้า | ไฟล์ | รายละเอียด |
-|------|------|-----------|
-| เข้าสู่ระบบ | `src/PinLogin.jsx` | คีย์แพด PIN 6 หลัก |
-| เช็คอิน | `src/CheckIn.jsx` | ปุ่มเดียวเช็คอิน↔เช็คเอา, GPS อย่างเดียว, เวลาเรียลไทม์ |
-| ตารางเวลา | `src/Timesheet.jsx` | ตรวจ/แก้เวลา + คำนวณ OT (ปัดเศษ ≥45 น. ขึ้น 1 ชม.) |
-| สลิป | `src/Payslip.jsx` | สลิปเงินเดือน |
+## โหมดทำงาน
+- **ไม่ตั้ง env** → โหมดเดโม (บัญชีตัวอย่างในเครื่อง ไม่บันทึกจริง)
+- **ตั้ง env แล้ว** → ใช้ Supabase จริง (ล็อกอิน/เช็คอิน/หักเงิน/อนุมัติ/กะ บันทึกลง DB)
 
-## Deploy ขึ้น Vercel
-1. push โค้ดขึ้น GitHub
-2. ที่ Vercel เลือก **Import Project** → เลือก repo นี้
-3. Framework = **Vite** (ตรวจอัตโนมัติ), Build = `npm run build`, Output = `dist`
-4. กด Deploy
+บัญชีเดโม: `admin/admin1234` (ผู้บริหาร) · `head1/head1234` (หัวหน้า) · `somying/1234` (หน้าร้าน) · `prayut/1234` (หลังร้าน)
 
-## ต่อ Supabase (บันทึกข้อมูลจริง)
-แอปทำงานได้ 2 โหมดอัตโนมัติ:
-- **ไม่ตั้ง env** → โหมดเดโม (ข้อมูลตัวอย่าง, PIN `123456`, ไม่บันทึกจริง)
-- **ตั้ง env แล้ว** → ล็อกอินด้วย PIN จริง + เช็คอิน/เอาต์บันทึกลง `attendance_logs`
-
-**ขั้นตอนเปิดใช้:**
-1. Supabase → เปิดโปรเจกต์ `checkin-app` (ถ้า paused กด **Restore**)
+## เปิดใช้ Supabase (จริง)
+1. Supabase → เปิดโปรเจกต์ (ถ้า paused กด **Restore**)
 2. **SQL Editor → New query** → วางไฟล์ [`supabase/schema.sql`](supabase/schema.sql) → **Run**
-   (สร้างตาราง companies/branches/shifts/employees/attendance_logs + RPC `login_by_pin` + seed ตัวอย่าง)
-3. **Project Settings → API** คัดลอก `Project URL` และ `anon public key`
-4. **Vercel → checkin-app → Settings → Environment Variables** เพิ่ม 2 ตัว (ทุก Environment):
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-5. **Deployments → Redeploy** (env ใหม่มีผลตอน build เท่านั้น)
-6. แก้ PIN/เงินเดือนพนักงานจริงในตาราง `employees` (seed ให้ PIN `123456` = สมหญิง, `141414` = ประยุทธ์)
+   (สร้างตารางทั้งหมด รวม **`deduct_logs`** ที่เคย error + RPC `login_by_credentials` / `list_employees` + seed)
+3. **Project Settings → API** คัดลอก `Project URL` + `anon public key`
+4. **Vercel → Settings → Environment Variables** เพิ่ม `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (ทุก Environment)
+5. **Redeploy** แล้วแก้ user/password/เงินเดือนจริงในตาราง `employees`
 
-**สถานะการต่อ DB ต่อหน้า:**
-| หน้า | ต่อ DB แล้ว? |
-|------|------|
-| เข้าสู่ระบบ (PIN) | ✅ RPC `login_by_pin` |
-| เช็คอิน | ✅ บันทึก/อ่าน `attendance_logs`, สาขา/กะจากพนักงาน |
-| ตารางเวลา (Timesheet) | ⏳ เฟส 2 (ต้องมี role แอดมิน + เก็บพักเที่ยง 4 ช่อง) |
-| สลิป (Payslip) | ⏳ เฟส 2 (ต้องมีตารางเงินกู้/รายการหัก) |
+## สถานะการต่อ DB ต่อหน้า
+| หน้า | ต่อ DB |
+|------|--------|
+| เข้าสู่ระบบ (user+password) | ✅ RPC `login_by_credentials` |
+| เช็คอิน (+พักเที่ยงหลังร้าน) | ✅ `attendance_logs` |
+| บันทึกหักเงิน | ✅ `deduct_logs` (แก้บั๊กเดิม) |
+| อนุมัติ (โชว์ผู้อนุมัติ) | ✅ `approvals` |
+| กำหนดกะ | ✅ `employees.shift_id` |
+| ตารางเวลา / สลิป | ⏳ ยังเป็นตัวอย่าง (เฟส 2: อ่าน `attendance_logs`/`deduct_logs` มาคำนวณจริง) |
 
-> ความปลอดภัย: PIN เก็บในตาราง `employees` แต่ปิดอ่านผ่าน RLS (anon อ่านตรงไม่ได้) —
-> ล็อกอินผ่าน RPC `login_by_pin` เท่านั้น ก่อน production ควรทำ hash PIN + auth เต็มรูปแบบ
+> ความปลอดภัย: password เก็บในตาราง `employees` แต่ปิดอ่านผ่าน RLS (ล็อกอินผ่าน RPC เท่านั้น)
+> ก่อน production ควร hash password + ทำ auth เต็มรูปแบบ

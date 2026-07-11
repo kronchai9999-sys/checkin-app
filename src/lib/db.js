@@ -147,7 +147,23 @@ export async function createEmployee(emp) {
 
 export async function updateEmployee(id, patch) {
   if (!isSupabaseReady) return { demo: true };
-  const { error } = await supabase.from("employees").update(patch).eq("id", id);
+  // ผ่าน RPC SECURITY DEFINER (employees ไม่มี SELECT policy → PATCH ตรงไม่ติด)
+  const { error } = await supabase.rpc("admin_update_employee", {
+    p_id: id,
+    p_name: patch.name ?? null,
+    p_role: patch.role ?? null,
+    p_department: patch.department ?? null,
+    p_company_id: patch.company_id ?? null,
+    p_branch_id: patch.branch_id ?? null,
+    p_shift_id: patch.shift_id ?? null,
+    p_position: patch.position ?? null,
+    p_pay_type: patch.pay_type ?? null,
+    p_base_salary: patch.base_salary ?? null,
+    p_start_date: patch.start_date ?? null,
+    p_active: patch.active ?? null,
+    p_username: patch.username ?? null,
+    p_password: patch.password ?? null,
+  });
   if (error) { console.error("updateEmployee:", error.message); return { error: error.message }; }
   return { ok: true };
 }
@@ -155,7 +171,7 @@ export async function updateEmployee(id, patch) {
 // ---------- กำหนด/เปลี่ยนกะ (req 6) ----------
 export async function setEmployeeShift(employeeId, shiftId) {
   if (!isSupabaseReady) return { demo: true };
-  const { error } = await supabase.from("employees").update({ shift_id: shiftId }).eq("id", employeeId);
+  const { error } = await supabase.rpc("admin_update_employee", { p_id: employeeId, p_shift_id: shiftId });
   if (error) { console.error("setEmployeeShift:", error.message); return { error: error.message }; }
   return { ok: true };
 }

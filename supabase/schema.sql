@@ -198,6 +198,34 @@ language sql security definer set search_path = public as $$
 $$;
 grant execute on function list_employees() to anon, authenticated;
 
+-- RPC: แก้ไขพนักงาน (SECURITY DEFINER — อัปเดตได้โดยไม่ต้องเปิด SELECT ให้ anon)
+-- ส่งเฉพาะ field ที่จะแก้ (null = คงเดิม) · username/password เว้นว่าง = คงเดิม
+create or replace function admin_update_employee(
+  p_id uuid,
+  p_name text default null, p_role text default null, p_department text default null,
+  p_company_id text default null, p_branch_id text default null, p_shift_id text default null,
+  p_position text default null, p_pay_type text default null, p_base_salary numeric default null,
+  p_start_date text default null, p_active boolean default null,
+  p_username text default null, p_password text default null
+) returns void language sql security definer set search_path = public as $$
+  update employees set
+    name        = coalesce(p_name, name),
+    role        = coalesce(p_role, role),
+    department  = coalesce(p_department, department),
+    company_id  = coalesce(p_company_id, company_id),
+    branch_id   = coalesce(p_branch_id, branch_id),
+    shift_id    = coalesce(p_shift_id, shift_id),
+    "position"  = coalesce(p_position, "position"),
+    pay_type    = coalesce(p_pay_type, pay_type),
+    base_salary = coalesce(p_base_salary, base_salary),
+    start_date  = coalesce(p_start_date, start_date),
+    active      = coalesce(p_active, active),
+    username    = coalesce(nullif(p_username, ''), username),
+    password    = coalesce(nullif(p_password, ''), password)
+  where id = p_id;
+$$;
+grant execute on function admin_update_employee(uuid, text, text, text, text, text, text, text, text, numeric, text, boolean, text, text) to anon, authenticated;
+
 -- ============================================================
 -- Seed — แก้ user/password/เงินเดือนจริงก่อนใช้งาน
 -- ============================================================

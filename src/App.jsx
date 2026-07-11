@@ -6,7 +6,8 @@ import Payslip from "./Payslip.jsx";
 import Approvals from "./admin/Approvals.jsx";
 import Deductions from "./admin/Deductions.jsx";
 import Shifts from "./admin/Shifts.jsx";
-import { isManager, ROLE_LABEL } from "./lib/rules.js";
+import Employees from "./admin/Employees.jsx";
+import { isManager, isExec, ROLE_LABEL } from "./lib/rules.js";
 
 const AUTH_KEY = "hr_authed";
 const EMP_KEY = "hr_emp";
@@ -18,6 +19,7 @@ const TABS = [
   { id: "approve",   label: "อนุมัติ",   icon: "✅", Comp: Approvals,  manager: true },
   { id: "deduct",    label: "หักเงิน",   icon: "➖", Comp: Deductions, manager: true },
   { id: "shifts",    label: "กำหนดกะ",  icon: "🔁", Comp: Shifts,     manager: true },
+  { id: "staff",     label: "พนักงาน",   icon: "👥", Comp: Employees,  exec: true },
 ];
 
 const TH = { fontFamily: '"Sarabun","Noto Sans Thai","Prompt",sans-serif' };
@@ -45,7 +47,8 @@ export default function App() {
   if (!authed) return <Login onSuccess={login} />;
 
   const manager = isManager(employee?.role);
-  const tabs = TABS.filter((t) => !t.manager || manager);
+  const exec = isExec(employee?.role);
+  const tabs = TABS.filter((t) => (t.exec ? exec : t.manager ? manager : true));
   const Active = (tabs.find((t) => t.id === tab) || tabs[0]).Comp;
 
   return (

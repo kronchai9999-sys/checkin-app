@@ -137,6 +137,21 @@ export async function decideApproval({ id, status, approverId, approverName }) {
   return { ok: true };
 }
 
+// ---------- จัดการพนักงาน (สร้าง/แก้/เปิด-ปิด) ----------
+export async function createEmployee(emp) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("employees").insert(emp);
+  if (error) { console.error("createEmployee:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+
+export async function updateEmployee(id, patch) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("employees").update(patch).eq("id", id);
+  if (error) { console.error("updateEmployee:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+
 // ---------- กำหนด/เปลี่ยนกะ (req 6) ----------
 export async function setEmployeeShift(employeeId, shiftId) {
   if (!isSupabaseReady) return { demo: true };

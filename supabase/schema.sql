@@ -157,7 +157,12 @@ begin
   end loop;
 end $$;
 
--- employees: ไม่มี policy select ให้ anon (กัน username/password รั่ว) — เข้าถึงผ่าน RPC เท่านั้น
+-- employees: ไม่มี policy "select" ให้ anon (กัน username/password รั่ว) — อ่านผ่าน RPC list_employees เท่านั้น
+-- แต่เปิด insert/update ให้จัดการพนักงานจากแอปได้ (ไม่เปิด select จึงยังอ่าน password ตรงไม่ได้)
+drop policy if exists p_emp_insert on employees;
+create policy p_emp_insert on employees for insert with check (true);
+drop policy if exists p_emp_update on employees;
+create policy p_emp_update on employees for update using (true) with check (true);
 
 -- ============================================================
 -- RPC: ล็อกอินด้วย user + password (โชว์ req 7)

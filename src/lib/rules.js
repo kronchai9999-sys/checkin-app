@@ -58,3 +58,5 @@ export function canApprove(role, requestType) {
 export const canSetShift = (role) => isManager(role);
 // อนุมัติ "เปลี่ยนกะ" ให้เฉพาะหัวหน้า (req 6)
 export const canApproveShiftChange = (role) => isHead(role) || isExec(role);
+// จัดการพนักงาน/กำหนดสิทธิ = เฉพาะผู้บริหาร
+export const canManageStaff = (role) => isExec(role);

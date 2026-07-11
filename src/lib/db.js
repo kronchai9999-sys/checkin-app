@@ -99,7 +99,25 @@ export async function listDeductions(period) {
   return data;
 }
 
+export async function listDeductionsForEmployee(employeeId, period) {
+  if (!isSupabaseReady) return null;
+  let q = supabase.from("deduct_logs").select("*").eq("employee_id", employeeId);
+  if (period) q = q.eq("period", period);
+  const { data, error } = await q.order("created_at", { ascending: false });
+  if (error) { console.error("listDeductionsForEmployee:", error.message); return null; }
+  return data;
+}
+
 // ---------- คำขออนุมัติ (โชว์ชื่อผู้อนุมัติ — req 3,4,6) ----------
+export async function createApproval({ requestType, employeeId, detail }) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("approvals").insert({
+    request_type: requestType, employee_id: employeeId, detail, status: "pending",
+  });
+  if (error) { console.error("createApproval:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+
 export async function listApprovals(status = "pending") {
   if (!isSupabaseReady) return null;
   const { data, error } = await supabase

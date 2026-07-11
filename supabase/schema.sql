@@ -166,12 +166,12 @@ create or replace function login_by_credentials(p_username text, p_password text
 returns table (
   id uuid, code text, name text, role text, department text,
   company_id text, branch_id text, shift_id text,
-  position text, pay_type text, base_salary numeric, start_date text
+  "position" text, pay_type text, base_salary numeric, start_date text
 )
 language sql security definer set search_path = public as $$
   select e.id, e.code, e.name, e.role, e.department,
          e.company_id, e.branch_id, e.shift_id,
-         e.position, e.pay_type, e.base_salary, e.start_date
+         e."position", e.pay_type, e.base_salary, e.start_date
   from employees e
   where e.username = p_username and e.password = p_password and e.active
   limit 1;
@@ -183,12 +183,12 @@ create or replace function list_employees()
 returns table (
   id uuid, code text, name text, role text, department text,
   company_id text, branch_id text, shift_id text,
-  position text, pay_type text, base_salary numeric, start_date text, active boolean
+  "position" text, pay_type text, base_salary numeric, start_date text, active boolean
 )
 language sql security definer set search_path = public as $$
   select e.id, e.code, e.name, e.role, e.department,
          e.company_id, e.branch_id, e.shift_id,
-         e.position, e.pay_type, e.base_salary, e.start_date, e.active
+         e."position", e.pay_type, e.base_salary, e.start_date, e.active
   from employees e order by e.code;
 $$;
 grant execute on function list_employees() to anon, authenticated;

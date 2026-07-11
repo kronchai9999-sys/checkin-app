@@ -62,3 +62,5 @@ export const canApproveShiftChange = (role) => isHead(role) || isExec(role);
 export const canManageStaff = (role) => isExec(role);
 // จัดการสาขา = เฉพาะผู้บริหาร
 export const canManageBranches = (role) => isExec(role);
+// จัดการเวลากะ (เพิ่ม/แก้/ลบกะ) = เฉพาะผู้บริหาร
+export const canManageShiftTypes = (role) => isExec(role);

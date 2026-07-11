@@ -169,6 +169,20 @@ export async function updateEmployee(id, patch) {
   return { ok: true };
 }
 
+// ---------- จัดการกะ (shifts มี RLS read+write ครบ → PATCH/insert/delete ตรงได้) ----------
+export async function saveShiftType(shift) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("shifts").upsert(shift);
+  if (error) { console.error("saveShiftType:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+export async function deleteShiftType(id) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("shifts").delete().eq("id", id);
+  if (error) { console.error("deleteShiftType:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+
 // ---------- จัดการสาขา (branches มี RLS read+write ครบ → PATCH/insert/delete ตรงได้) ----------
 export async function saveBranch(branch) {
   if (!isSupabaseReady) return { demo: true };

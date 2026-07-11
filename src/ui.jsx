@@ -4,7 +4,7 @@ export const TH = { fontFamily: '"Sarabun","Noto Sans Thai","Prompt",sans-serif'
 export function Page({ children, className = "" }) {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100" style={TH}>
-      <div className={`mx-auto max-w-2xl px-4 pb-28 pt-5 ${className}`}>{children}</div>
+      <div className={`mx-auto max-w-2xl px-4 pb-28 pt-5 lg:max-w-4xl lg:px-8 lg:pb-10 lg:pt-8 ${className}`}>{children}</div>
     </div>
   );
 }

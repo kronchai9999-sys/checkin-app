@@ -4,6 +4,7 @@ import { isSupabaseReady } from "../lib/supabase.js";
 import { DEMO_ORG } from "../lib/demo.js";
 import { canManageBranches } from "../lib/rules.js";
 import { Page, PageHeader, Card, Field, inputCls, Empty, DemoTag } from "../ui.jsx";
+import MapPicker from "./MapPicker.jsx";
 
 const COMPANY_ID = "bakery";
 
@@ -12,8 +13,8 @@ export default function Branches({ employee }) {
   const [branches, setBranches] = useState(DEMO_ORG.branches);
   const [form, setForm] = useState({ name: "", radius: 150, lat: "", lng: "" });
   const [msg, setMsg] = useState(null);
-  const [gps, setGps] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [picker, setPicker] = useState(null);   // { forNew: true } | { branch }
 
   async function refresh() {
     const o = await fetchOrg();
@@ -21,21 +22,11 @@ export default function Branches({ employee }) {
   }
   useEffect(() => { refresh(); }, []);
 
-  function getLocation(cb) {
-    setGps("กำลังอ่านพิกัด…");
-    if (!navigator.geolocation) { setGps("อุปกรณ์ไม่รองรับ GPS"); return; }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => { setGps(null); cb(pos.coords.latitude, pos.coords.longitude); },
-      () => setGps("อ่านพิกัดไม่ได้ — เปิดสิทธิ์ตำแหน่ง"),
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
-  }
-
   async function addBranch(e) {
     e?.preventDefault();
     if (busy) return;
     if (!form.name.trim()) { setMsg({ ok: false, text: "กรอกชื่อสาขา" }); return; }
-    if (form.lat === "" || form.lng === "") { setMsg({ ok: false, text: 'กด "ใช้ตำแหน่งปัจจุบัน" หรือกรอกพิกัดก่อน' }); return; }
+    if (form.lat === "" || form.lng === "") { setMsg({ ok: false, text: 'กด "ปักหมุดตำแหน่ง" ก่อน' }); return; }
     setBusy(true); setMsg(null);
     const branch = {
       id: "b" + Date.now().toString(36), company_id: COMPANY_ID, name: form.name.trim(),
@@ -64,7 +55,7 @@ export default function Branches({ employee }) {
 
   return (
     <Page>
-      <PageHeader icon="🏢" title="จัดการสาขา" accent="sky" subtitle="เพิ่ม/แก้สาขา · ตั้งพิกัด GPS ด้วยตำแหน่งปัจจุบัน" />
+      <PageHeader icon="🏢" title="จัดการสาขา" accent="sky" subtitle="เพิ่ม/แก้สาขา · ปักหมุดบนแผนที่ให้ตรงร้าน" />
       {!isSupabaseReady && <DemoTag />}
 
       {/* เพิ่มสาขา */}
@@ -76,14 +67,12 @@ export default function Branches({ employee }) {
             <Field label="รัศมีอนุญาต (เมตร)"><input type="number" min="20" className={inputCls} value={form.radius} onChange={(e) => setForm((f) => ({ ...f, radius: e.target.value }))} /></Field>
           </div>
           <div className="flex items-end gap-2">
-            <div className="grid flex-1 grid-cols-2 gap-3">
-              <Field label="ละติจูด (lat)"><input className={inputCls} value={form.lat} onChange={(e) => setForm((f) => ({ ...f, lat: e.target.value }))} placeholder="16.43" /></Field>
-              <Field label="ลองจิจูด (lng)"><input className={inputCls} value={form.lng} onChange={(e) => setForm((f) => ({ ...f, lng: e.target.value }))} placeholder="103.50" /></Field>
+            <div className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-500">
+              {form.lat ? `พิกัด: ${Number(form.lat).toFixed(6)}, ${Number(form.lng).toFixed(6)}` : "ยังไม่ได้ปักหมุด"}
             </div>
-            <button type="button" onClick={() => getLocation((lat, lng) => setForm((f) => ({ ...f, lat: lat.toFixed(6), lng: lng.toFixed(6) })))}
-              className="rounded-xl bg-sky-600 px-3 py-2.5 text-sm font-semibold text-white active:bg-sky-700">📍 ตำแหน่งปัจจุบัน</button>
+            <button type="button" onClick={() => setPicker({ forNew: true })}
+              className="rounded-xl bg-sky-600 px-3 py-2.5 text-sm font-semibold text-white active:bg-sky-700">🗺️ ปักหมุดตำแหน่ง</button>
           </div>
-          {gps && <p className="text-xs text-slate-500">{gps}</p>}
           {msg && <p className={`text-sm ${msg.ok ? "text-emerald-600" : "text-rose-500"}`}>{msg.text}</p>}
           <button type="submit" disabled={busy} className={`w-full rounded-xl py-3 text-sm font-semibold text-white ${busy ? "bg-slate-300" : "bg-emerald-600 active:bg-emerald-700"}`}>{busy ? "กำลังเพิ่ม…" : "➕ เพิ่มสาขา"}</button>
         </form>
@@ -99,7 +88,7 @@ export default function Branches({ employee }) {
               <Field label="รัศมี (ม.)"><input type="number" className={inputCls} defaultValue={b.radius} onBlur={(e) => Number(e.target.value) !== b.radius && patchBranch(b, { radius: e.target.value })} /></Field>
               <Field label="พิกัด"><div className="mt-1 truncate rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-500">{Number(b.lat).toFixed(4)}, {Number(b.lng).toFixed(4)}</div></Field>
               <div className="flex items-end gap-1.5">
-                <button onClick={() => getLocation((lat, lng) => patchBranch(b, { lat, lng }))} className="flex-1 rounded-xl bg-sky-50 px-2 py-2.5 text-xs font-medium text-sky-600 ring-1 ring-sky-200">📍 ตั้งพิกัดที่นี่</button>
+                <button onClick={() => setPicker({ branch: b })} className="flex-1 rounded-xl bg-sky-50 px-2 py-2.5 text-xs font-medium text-sky-600 ring-1 ring-sky-200">🗺️ ปักหมุดใหม่</button>
                 <button onClick={() => removeBranch(b)} className="rounded-xl bg-rose-50 px-2.5 py-2.5 text-xs font-medium text-rose-500 ring-1 ring-rose-200">ลบ</button>
               </div>
             </div>
@@ -107,6 +96,20 @@ export default function Branches({ employee }) {
         ))}
       </Card>
       <p className="mt-3 px-1 text-xs text-slate-400">* พนักงานจะเลือกสาขาที่กำลังเช็คอินได้เอง (มีหลายสาขา) · แก้ชื่อ/รัศมีแล้วคลิกออกจากช่องเพื่อบันทึก</p>
+
+      {picker && (
+        <MapPicker
+          initialLat={picker.branch ? Number(picker.branch.lat) : Number(form.lat) || null}
+          initialLng={picker.branch ? Number(picker.branch.lng) : Number(form.lng) || null}
+          radius={picker.branch ? Number(picker.branch.radius) : Number(form.radius) || 150}
+          onClose={() => setPicker(null)}
+          onConfirm={(lat, lng) => {
+            if (picker.branch) patchBranch(picker.branch, { lat, lng });
+            else setForm((f) => ({ ...f, lat: lat.toFixed(6), lng: lng.toFixed(6) }));
+            setPicker(null);
+          }}
+        />
+      )}
     </Page>
   );
 }

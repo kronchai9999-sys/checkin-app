@@ -7,6 +7,7 @@ import Approvals from "./admin/Approvals.jsx";
 import Deductions from "./admin/Deductions.jsx";
 import Shifts from "./admin/Shifts.jsx";
 import Employees from "./admin/Employees.jsx";
+import Branches from "./admin/Branches.jsx";
 import { isManager, isExec, ROLE_LABEL } from "./lib/rules.js";
 
 const AUTH_KEY = "hr_authed";
@@ -20,6 +21,7 @@ const TABS = [
   { id: "deduct",    label: "หักเงิน",   icon: "➖", Comp: Deductions, manager: true },
   { id: "shifts",    label: "กำหนดกะ",  icon: "🔁", Comp: Shifts,     manager: true },
   { id: "staff",     label: "พนักงาน",   icon: "👥", Comp: Employees,  exec: true },
+  { id: "branches",  label: "สาขา",      icon: "🏢", Comp: Branches,   exec: true },
 ];
 
 const TH = { fontFamily: '"Sarabun","Noto Sans Thai","Prompt",sans-serif' };

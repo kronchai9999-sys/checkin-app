@@ -1,29 +1,39 @@
 import { useState, useEffect } from "react";
-import { listEmployees, saveDeduction, listDeductions } from "../lib/db.js";
+import { listEmployees, saveDeduction, listDeductions, listDeductTypes, addDeductType } from "../lib/db.js";
 import { isSupabaseReady } from "../lib/supabase.js";
 import { DEMO_EMPLOYEES } from "../lib/demo.js";
 import { PERIODS, baht } from "../lib/payroll.js";
 import { isManager } from "../lib/rules.js";
 import { Page, PageHeader, Card, Select, Field, inputCls, Empty, DemoTag } from "../ui.jsx";
 
-const TYPES = ["ทำของเสียหาย", "เงินขาด (แคชเชียร์)", "เบิกล่วงหน้า", "อื่นๆ"];
+const DEFAULT_TYPES = ["ทำของเสียหาย", "เงินขาด (แคชเชียร์)", "เบิกล่วงหน้า", "เงินกู้"];
 
 export default function Deductions({ employee }) {
   const manager = isManager(employee?.role);
   const [emps, setEmps] = useState(DEMO_EMPLOYEES);
+  const [types, setTypes] = useState(DEFAULT_TYPES);
   const [period, setPeriod] = useState(PERIODS[0].label);
   const [empId, setEmpId] = useState(DEMO_EMPLOYEES[2]?.id);
-  const [type, setType] = useState(TYPES[0]);
+  const [type, setType] = useState(DEFAULT_TYPES[0]);
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  const [newType, setNewType] = useState("");
   const [rows, setRows] = useState([]);
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     listEmployees().then((l) => { if (l && l.length) { setEmps(l); setEmpId(l[0].id); } });
+    listDeductTypes().then((t) => { if (t && t.length) { setTypes(t); setType(t[0]); } });
   }, []);
   useEffect(() => { listDeductions(period).then((d) => setRows(d || [])); }, [period]);
+
+  async function addType() {
+    const name = newType.trim();
+    if (!name || types.includes(name)) { setNewType(""); return; }
+    setTypes((t) => [...t, name]); setType(name); setNewType("");
+    await addDeductType(name);
+  }
 
   async function submit(e) {
     e?.preventDefault();
@@ -58,8 +68,13 @@ export default function Deductions({ employee }) {
           <div className="grid grid-cols-2 gap-3">
             <Field label="งวด"><Select value={period} onChange={(e) => setPeriod(e.target.value)}>{PERIODS.map((p) => <option key={p.label}>{p.label}</option>)}</Select></Field>
             <Field label="พนักงาน"><Select value={empId} onChange={(e) => setEmpId(e.target.value)}>{emps.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.code})</option>)}</Select></Field>
-            <Field label="ประเภทการหัก"><Select value={type} onChange={(e) => setType(e.target.value)}>{TYPES.map((t) => <option key={t}>{t}</option>)}</Select></Field>
+            <Field label="ประเภทการหัก"><Select value={type} onChange={(e) => setType(e.target.value)}>{types.map((t) => <option key={t}>{t}</option>)}</Select></Field>
             <Field label="จำนวนเงิน (บาท)"><input type="number" inputMode="decimal" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputCls} placeholder="0" /></Field>
+          </div>
+          {/* เพิ่มหัวข้อหักใหม่ */}
+          <div className="flex items-end gap-2">
+            <div className="flex-1"><Field label="เพิ่มหัวข้อหักใหม่"><input value={newType} onChange={(e) => setNewType(e.target.value)} className={inputCls} placeholder="เช่น ค่าปรับมาสาย, ค่าชุดฟอร์ม" /></Field></div>
+            <button type="button" onClick={addType} className="rounded-xl bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white active:bg-slate-800">➕ เพิ่ม</button>
           </div>
           <Field label="หมายเหตุ"><input value={note} onChange={(e) => setNote(e.target.value)} className={inputCls} placeholder="เช่น ทำจานแตก 2 ใบ (ถ้ามี)" /></Field>
           {msg && <p className={`text-sm ${msg.ok ? "text-emerald-600" : "text-rose-500"}`}>{msg.text}</p>}

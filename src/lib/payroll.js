@@ -70,8 +70,9 @@ export function summarizeDays(days) {
 }
 
 // ---------- คำนวณสลิปเงินเดือน ----------
-// emp: {pay_type, base_salary}  att: {presentDays, lateTotal, otHours}  deducts: [{type, amount}]
-export function computePayslip(emp, att, deducts) {
+// emp: {pay_type, base_salary, sso}  att: {presentDays, lateTotal, otHours}
+// deducts: [{type, amount}]  carryIn: ยอดหนี้ยกมาจากงวดก่อน (บาท)
+export function computePayslip(emp, att, deducts, carryIn = 0) {
   const dailyWage = emp.pay_type === "daily" ? emp.base_salary : emp.base_salary / RULES.workDaysPerMonth;
   const base = emp.pay_type === "daily" ? emp.base_salary * (att.presentDays || 0) : emp.base_salary;
 
@@ -80,17 +81,28 @@ export function computePayslip(emp, att, deducts) {
 
   const lateChargeable = Math.max(0, (att.lateTotal || 0) - RULES.lateGraceMinutesPerMonth);
   const dLate = lateChargeable * RULES.lateRatePerMinute;
-  const sso = Math.min(base, RULES.ssoCapBase) * RULES.ssoRate;
+  const ssoApplied = emp.sso !== false;                                   // สปส. เลือกหักรายคน
+  const sso = ssoApplied ? Math.min(base, RULES.ssoCapBase) * RULES.ssoRate : 0;
   const dExtra = (deducts || []).reduce((s, d) => s + Number(d.amount || 0), 0);
 
-  const totalDeductions = dLate + sso + dExtra;
-  const netPay = grossEarnings - totalDeductions;
+  const beforeCarry = grossEarnings - dLate - sso - dExtra;
+  const rawNet = beforeCarry - carryIn;                                   // หักหนี้ยกมา
+  const netPay = Math.max(0, rawNet);                                     // จ่ายจริงไม่ต่ำกว่า 0
+  const carryForward = rawNet < 0 ? -rawNet : 0;                          // ติดลบ → ยกไปงวดหน้า
+  const totalDeductions = dLate + sso + dExtra + carryIn;
 
   return {
     dailyWage, base, otPay, grossEarnings,
     lateInfo: { total: att.lateTotal || 0, grace: RULES.lateGraceMinutesPerMonth, chargeable: lateChargeable },
-    dLate, sso, dExtra, deducts: deducts || [], totalDeductions, netPay,
+    dLate, sso, ssoApplied, dExtra, deducts: deducts || [],
+    carryIn, carryForward, totalDeductions, netPay,
   };
+}
+
+// งวดถัดไป (สำหรับบันทึกยอดยกมา)
+export function nextPeriodLabel(label) {
+  const i = PERIODS.findIndex((p) => p.label === label);
+  return i >= 0 && i + 1 < PERIODS.length ? PERIODS[i + 1].label : null;
 }
 
 // ---------- format ----------

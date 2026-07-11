@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { fetchCompanies, savePunch, fetchTodayPunches } from "./lib/db.js";
 import { isBackOffice } from "./lib/rules.js";
+import { enqueuePunch, flushQueue, getQueue } from "./lib/offline.js";
 
 /**
  * แอปเช็คอินพนักงาน (Standalone PWA) — เช็คอินเข้า/เช็คเอาออก
@@ -103,10 +104,31 @@ export default function CheckIn({ employee }) {
   const [coords, setCoords] = useState(null);
   const [gpsError, setGpsError] = useState(null);
   const [gpsLoading, setGpsLoading] = useState(false);
+  const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
+  const [queueCount, setQueueCount] = useState(getQueue().length);
+  const [syncMsg, setSyncMsg] = useState(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
+  }, []);
+
+  // ออนไลน์/ออฟไลน์ — เน็ตกลับมาแล้วส่งคิวที่ค้างขึ้น DB
+  useEffect(() => {
+    async function goOnline() {
+      setOnline(true);
+      const q = getQueue();
+      if (q.length) {
+        const { sent, left } = await flushQueue();
+        setQueueCount(left);
+        if (sent) setSyncMsg(`ส่งเวลาที่บันทึกออฟไลน์ ${sent} รายการขึ้นระบบแล้ว`);
+      }
+    }
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    if (navigator.onLine) goOnline();          // เผื่อมีคิวค้างตอนเปิดแอป
+    return () => { window.removeEventListener("online", goOnline); window.removeEventListener("offline", goOffline); };
   }, []);
 
   // โหลดบริษัท/สาขา/กะจาก Supabase (ถ้าต่อไว้) + ยึดค่าเริ่มต้นตามพนักงาน
@@ -157,8 +179,10 @@ export default function CheckIn({ employee }) {
     [coords, branch]
   );
   const inRange = distance != null && distance <= branch.radius;
-  const noGps = Boolean(current?.noGps);          // พักเที่ยงหลังร้าน — ไม่ต้องจับ GPS (req 5)
-  const ready = !dayComplete && (noGps || inRange);
+  // ไม่จับ GPS: (1) พักเที่ยงหลังร้าน (req 5) หรือ (2) เน็ตล่ม (บันทึกออฟไลน์)
+  const noGps = Boolean(current?.noGps);
+  const skipGps = noGps || !online;
+  const ready = !dayComplete && (skipGps || inRange);
 
   function getLocation() {
     setGpsError(null);
@@ -187,8 +211,8 @@ export default function CheckIn({ employee }) {
     if (!ready) return;
     const t = new Date();
     const punch = current;
-    const at = coords;
-    const dist = distance;
+    const at = skipGps ? null : coords;    // ออฟไลน์/พักเที่ยง = ไม่เก็บพิกัด
+    const dist = skipGps ? null : distance;
     const rec = {
       key: punch.key,
       label: punch.short,
@@ -196,21 +220,21 @@ export default function CheckIn({ employee }) {
       timeStr: t.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }),
       coords: at,
       distance: dist,
+      offline: !online,
       status: shiftStatus(t, shift, punch.compare),
     };
     setDone([...done, rec]);
     setCoords(null); setGpsError(null);   // เคลียร์ GPS ให้เช็คใหม่ครั้งถัดไป
-    // บันทึกลง Supabase (ถ้าเป็นพนักงานจริง + ต่อ DB ไว้)
     if (employee?.id) {
-      const res = await savePunch({
-        employeeId: employee.id,
-        punchType: punch.key,
-        lat: at?.lat,
-        lng: at?.lng,
-        distance: dist,
-        branchId: branch.id,
-      });
-      if (res?.error) setGpsError("บันทึกไม่สำเร็จ: " + res.error);
+      const payload = { employeeId: employee.id, punchType: punch.key, lat: at?.lat, lng: at?.lng, distance: dist, branchId: branch.id, ts: t.toISOString() };
+      if (!online) {
+        // เน็ตล่ม → เก็บในเครื่อง ส่งเมื่อเน็ตกลับ
+        setQueueCount(enqueuePunch(payload));
+        setSyncMsg(null);
+      } else {
+        const res = await savePunch(payload);
+        if (res?.error) { setQueueCount(enqueuePunch(payload)); setGpsError("เน็ตมีปัญหา — เก็บไว้ส่งภายหลัง"); }
+      }
     }
   }
 
@@ -267,11 +291,12 @@ export default function CheckIn({ employee }) {
               className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm disabled:opacity-70">
               {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <select value={branchId} onChange={(e) => { setBranchId(e.target.value); resetDay(); }} disabled={locked}
-              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm disabled:opacity-70">
+            <select value={branchId} onChange={(e) => { setBranchId(e.target.value); resetDay(); }}
+              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm">
               {company.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
+          {company.branches.length > 1 && <p className="text-xs text-slate-400">เลือกสาขาที่กำลังเช็คอิน</p>}
           {LOCK_SHIFT ? (
             <div className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-600">
               <span>กะ: {shift.name} ({shift.start}–{shift.end} น.)</span>
@@ -285,6 +310,17 @@ export default function CheckIn({ employee }) {
           )}
         </div>
 
+        {/* สถานะออนไลน์/ออฟไลน์ + คิวรอส่ง */}
+        {!online ? (
+          <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-rose-100">
+            📴 <b>ออฟไลน์</b> — บันทึกเวลาไว้ในเครื่อง (ไม่จับ GPS) · จะส่งขึ้นระบบอัตโนมัติเมื่อเน็ตกลับมา{queueCount > 0 ? ` · รอส่ง ${queueCount} รายการ` : ""}
+          </div>
+        ) : queueCount > 0 ? (
+          <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-700 ring-1 ring-amber-100">⏳ กำลังส่งเวลาที่ค้าง {queueCount} รายการ…</div>
+        ) : syncMsg ? (
+          <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700 ring-1 ring-emerald-100">✓ {syncMsg}</div>
+        ) : null}
+
         {/* ปุ่มตรวจ GPS + ปุ่มเช็คอินวงกลม */}
         <div className="rounded-2xl bg-white p-5 shadow-sm">
           {dayComplete ? (
@@ -296,10 +332,10 @@ export default function CheckIn({ employee }) {
             </div>
           ) : (
             <>
-              {noGps ? (
-                /* พักเที่ยงหลังร้าน — ไม่ต้องจับ GPS (req 5) */
-                <div className="mx-auto mb-4 flex items-center gap-2 rounded-full bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700">
-                  🍜 พักเที่ยง — ไม่ต้องเช็ค GPS (พักไม่เกิน 1 ชม. ไม่หักเงิน)
+              {skipGps ? (
+                /* ไม่ต้องจับ GPS: พักเที่ยงหลังร้าน (req 5) หรือ ออฟไลน์ */
+                <div className={`mx-auto mb-4 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${!online ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700"}`}>
+                  {!online ? "📴 ออฟไลน์ — บันทึกเวลาโดยไม่เช็ค GPS" : "🍜 พักเที่ยง — ไม่ต้องเช็ค GPS (พักไม่เกิน 1 ชม. ไม่หักเงิน)"}
                 </div>
               ) : (
                 <>
@@ -336,7 +372,7 @@ export default function CheckIn({ employee }) {
               </button>
 
               <p className="mt-4 text-center text-sm text-slate-400">
-                {ready ? "แตะปุ่มเพื่อบันทึกเวลา" : noGps ? "แตะปุ่มเพื่อบันทึกพักเที่ยง" : "กด \"ตรวจ GPS\" ให้อยู่ในพื้นที่ร้านก่อน"}
+                {ready ? "แตะปุ่มเพื่อบันทึกเวลา" : skipGps ? "แตะปุ่มเพื่อบันทึกเวลา" : "กด \"ตรวจ GPS\" ให้อยู่ในพื้นที่ร้านก่อน"}
               </p>
             </>
           )}

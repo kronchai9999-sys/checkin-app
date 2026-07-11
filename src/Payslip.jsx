@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
-import { listEmployees, fetchOrg, fetchPeriodPunches, listDeductionsForEmployee } from "./lib/db.js";
+import { listEmployees, fetchOrg, fetchPeriodPunches, listDeductionsForEmployee, getCarry, saveCarry } from "./lib/db.js";
 import { isSupabaseReady } from "./lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_ORG, demoPunches, demoDeductions } from "./lib/demo.js";
-import { PERIODS, monthRange, dailyFromPunches, summarizeDays, computePayslip, baht, round2 } from "./lib/payroll.js";
+import { PERIODS, monthRange, dailyFromPunches, summarizeDays, computePayslip, nextPeriodLabel, baht, round2 } from "./lib/payroll.js";
 import { isManager } from "./lib/rules.js";
 import { Page, PageHeader, Card, Select, Field, DemoTag } from "./ui.jsx";
 
@@ -14,6 +14,8 @@ export default function Payslip({ employee }) {
   const [empId, setEmpId] = useState(employee?.id || DEMO_EMPLOYEES[2].id);
   const [logs, setLogs] = useState([]);
   const [deducts, setDeducts] = useState([]);
+  const [carryIn, setCarryIn] = useState(0);
+  const [carryMsg, setCarryMsg] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -30,16 +32,18 @@ export default function Payslip({ employee }) {
   useEffect(() => {
     let alive = true;
     setLoading(true);
+    setCarryMsg(null);
     (async () => {
       if (isSupabaseReady && emp?.id) {
         const { fromISO, toISO } = monthRange(period);
-        const [p, d] = await Promise.all([
+        const [p, d, cy] = await Promise.all([
           fetchPeriodPunches(emp.id, fromISO, toISO),
           listDeductionsForEmployee(emp.id, period.label),
+          getCarry(emp.id, period.label),
         ]);
-        if (alive) { setLogs(p || []); setDeducts(d || []); setLoading(false); }
+        if (alive) { setLogs(p || []); setDeducts(d || []); setCarryIn(cy || 0); setLoading(false); }
       } else {
-        if (alive) { setLogs(demoPunches(emp, period)); setDeducts(demoDeductions(emp.id, period.label)); setLoading(false); }
+        if (alive) { setLogs(demoPunches(emp, period)); setDeducts(demoDeductions(emp.id, period.label)); setCarryIn(0); setLoading(false); }
       }
     })();
     return () => { alive = false; };
@@ -49,7 +53,14 @@ export default function Payslip({ employee }) {
     const s = summarizeDays(dailyFromPunches(logs, shift));
     return { presentDays: s.presentDays, lateTotal: s.lateTotal, otHours: s.otHours };
   }, [logs, shift]);
-  const c = useMemo(() => computePayslip(emp || {}, att, deducts), [emp, att, deducts]);
+  const c = useMemo(() => computePayslip(emp || {}, att, deducts, carryIn), [emp, att, deducts, carryIn]);
+
+  const nextP = nextPeriodLabel(period.label);
+  async function recordCarry() {
+    if (!nextP || c.carryForward <= 0) return;
+    const res = await saveCarry(emp.id, nextP, c.carryForward);
+    setCarryMsg(res?.error ? "บันทึกไม่สำเร็จ: " + res.error : `ยกยอด ${baht(c.carryForward)} ไปงวด ${nextP} แล้ว`);
+  }
 
   const shareLine = () => {
     const text =
@@ -120,8 +131,10 @@ export default function Payslip({ employee }) {
                 </div>
                 <div>
                   <div className="mb-1 rounded-t-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white">รายการหัก</div>
+                  {c.carryIn > 0 && <Row label="ยอดยกมา (หนี้เก่า)" value={c.carryIn} minus />}
                   {c.dLate > 0 && <Row label={`หักมาสาย (${c.lateInfo.chargeable} น.)`} value={c.dLate} minus />}
                   {c.sso > 0 && <Row label="ประกันสังคม 5%" value={c.sso} minus />}
+                  {!c.ssoApplied && <div className="px-3 py-1 text-xs text-slate-400">— ไม่หักประกันสังคม (ตั้งค่ารายคน)</div>}
                   {c.deducts.map((d, i) => <Row key={i} label={`${d.type}${d.created_by_name ? ` · โดย ${d.created_by_name}` : ""}`} value={d.amount} minus />)}
                   {c.totalDeductions === 0 && <div className="px-3 py-2 text-sm text-slate-400">ไม่มีรายการหัก</div>}
                   <Row label="รวมรายการหัก" value={c.totalDeductions} bold tone="rose" minus />
@@ -132,6 +145,23 @@ export default function Payslip({ employee }) {
                 <span className="text-sm font-medium">เงินสุทธิที่ได้รับ</span>
                 <span className="text-2xl font-bold tabular-nums">{baht(c.netPay)} ฿</span>
               </div>
+
+              {c.carryForward > 0 && (
+                <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 no-print">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-semibold text-amber-800">⚠️ เงินสุทธิติดลบ — ยอดยกไปงวดหน้า</span>
+                    <span className="font-bold text-rose-600">{baht(c.carryForward)} ฿</span>
+                  </div>
+                  <p className="mt-1 text-xs text-amber-700">งวดนี้จ่าย 0 · หนี้ {baht(c.carryForward)} บาท ทบไปหักงวด {nextP || "ถัดไป"}</p>
+                  {carryMsg ? (
+                    <p className="mt-2 text-sm font-medium text-emerald-600">{carryMsg}</p>
+                  ) : nextP ? (
+                    <button onClick={recordCarry} className="mt-2 w-full rounded-lg bg-amber-600 py-2 text-sm font-semibold text-white active:bg-amber-700">บันทึกยกยอดไปงวด {nextP}</button>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">* ไม่มีงวดถัดไปในระบบให้ยก</p>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

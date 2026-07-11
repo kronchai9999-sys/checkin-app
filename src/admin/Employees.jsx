@@ -19,7 +19,7 @@ const blank = (branch, shift) => ({
   code: "", name: "", username: "", password: "",
   role: "employee", department: "front",
   branch_id: branch || "", shift_id: shift || "",
-  position: "", pay_type: "monthly", base_salary: "", start_date: "",
+  position: "", pay_type: "monthly", base_salary: "", start_date: "", sso: true,
 });
 
 export default function Employees({ employee }) {
@@ -66,7 +66,7 @@ export default function Employees({ employee }) {
       branch_id: form.branch_id, shift_id: form.shift_id,
       position: form.position.trim() || null,
       pay_type: form.pay_type, base_salary: Number(form.base_salary) || 0,
-      start_date: form.start_date.trim() || null,
+      start_date: form.start_date.trim() || null, sso: form.sso,
     };
     const res = await createEmployee(payload);
     setBusy(false);
@@ -95,6 +95,7 @@ export default function Employees({ employee }) {
       branch_id: emp.branch_id || org.branches[0]?.id, shift_id: emp.shift_id || org.shifts[0]?.id,
       position: emp.position || "", pay_type: emp.pay_type || "monthly",
       base_salary: emp.base_salary ?? "", start_date: emp.start_date || "",
+      sso: emp.sso !== false,
       username: "", password: "",  // เว้นว่าง = ไม่เปลี่ยน
     });
     setEditing(emp);
@@ -113,6 +114,7 @@ export default function Employees({ employee }) {
       branch_id: ef.branch_id, shift_id: ef.shift_id,
       position: ef.position.trim() || null, pay_type: ef.pay_type,
       base_salary: Number(ef.base_salary) || 0, start_date: ef.start_date.trim() || null,
+      sso: ef.sso,
     };
     if (ef.username.trim()) patch.username = ef.username.trim();
     if (ef.password) patch.password = ef.password;
@@ -147,6 +149,12 @@ export default function Employees({ employee }) {
           <Field label="ประเภทค่าจ้าง"><Select value={form.pay_type} onChange={(e) => set("pay_type", e.target.value)}><option value="monthly">รายเดือน</option><option value="daily">รายวัน</option></Select></Field>
           <Field label="เงินเดือน/ค่าจ้าง"><input type="number" min="0" className={inputCls} value={form.base_salary} onChange={(e) => set("base_salary", e.target.value)} placeholder="0" /></Field>
           <Field label="วันเริ่มงาน"><input className={inputCls} value={form.start_date} onChange={(e) => set("start_date", e.target.value)} placeholder="01/01/2568" /></Field>
+          <Field label="ประกันสังคม">
+            <label className="mt-1 flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
+              <input type="checkbox" checked={form.sso} onChange={(e) => set("sso", e.target.checked)} className="h-4 w-4 accent-emerald-600" />
+              <span>{form.sso ? "หัก สปส. 5%" : "ไม่หัก สปส."}</span>
+            </label>
+          </Field>
           <div className="col-span-2 sm:col-span-3">
             {msg && <p className={`mb-2 text-sm ${msg.ok ? "text-emerald-600" : "text-rose-500"}`}>{msg.text}</p>}
             <button type="submit" disabled={busy} className={`w-full rounded-xl py-3 text-sm font-semibold text-white ${busy ? "bg-slate-300" : "bg-emerald-600 active:bg-emerald-700"}`}>
@@ -198,6 +206,12 @@ export default function Employees({ employee }) {
               <Field label="กะ"><Select value={ef.shift_id} onChange={(e) => setE("shift_id", e.target.value)}>{org.shifts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
               <Field label="ประเภทค่าจ้าง"><Select value={ef.pay_type} onChange={(e) => setE("pay_type", e.target.value)}><option value="monthly">รายเดือน</option><option value="daily">รายวัน</option></Select></Field>
               <Field label="เงินเดือน/ค่าจ้าง"><input type="number" min="0" className={inputCls} value={ef.base_salary} onChange={(e) => setE("base_salary", e.target.value)} /></Field>
+              <Field label="ประกันสังคม">
+                <label className="mt-1 flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
+                  <input type="checkbox" checked={ef.sso} onChange={(e) => setE("sso", e.target.checked)} className="h-4 w-4 accent-emerald-600" />
+                  <span>{ef.sso ? "หัก สปส. 5%" : "ไม่หัก สปส."}</span>
+                </label>
+              </Field>
               <div className="col-span-2 my-1 border-t border-slate-100 pt-2 text-xs font-medium text-slate-400">เปลี่ยนล็อกอิน (เว้นว่าง = คงเดิม)</div>
               <Field label="Username ใหม่"><input className={inputCls} value={ef.username} onChange={(e) => setE("username", e.target.value)} autoCapitalize="none" placeholder="เว้นว่าง = ไม่เปลี่ยน" /></Field>
               <Field label="รหัสผ่านใหม่"><input className={inputCls} value={ef.password} onChange={(e) => setE("password", e.target.value)} placeholder="เว้นว่าง = ไม่เปลี่ยน" /></Field>

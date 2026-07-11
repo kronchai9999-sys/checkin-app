@@ -253,3 +253,68 @@ insert into employees (code, username, password, name, role, department, company
   ('EMP-002','somying','1234',    'สมหญิง ใจดี',       'employee', 'front','bakery','b1','morning','พนักงานขาย', 'monthly',13000,'01/03/2566'),
   ('EMP-003','prayut', '1234',    'ประยุทธ์ ขยันงาน',  'employee', 'back', 'bakery','b1','morning','พนักงานครัว','monthly',12000,'15/08/2567')
 on conflict (code) do nothing;
+
+-- ============================================================
+-- ส่วนเสริม (ฟีเจอร์รอบ 2): สปส.รายคน / ยอดยกมา / หัวข้อหัก / สาขา 2
+-- ============================================================
+
+-- ประกันสังคมรายคน (บางคนไม่หัก)
+alter table employees add column if not exists sso boolean not null default true;
+
+-- ยอดยกมา (เงินสุทธิติดลบ → ทบงวดหน้า)
+create table if not exists payroll_carry (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid not null references employees(id) on delete cascade,
+  period text not null,
+  amount numeric not null default 0,     -- ยอดหนี้ยกมางวดนี้
+  note text,
+  created_at timestamptz not null default now(),
+  unique (employee_id, period)
+);
+alter table payroll_carry enable row level security;
+drop policy if exists p_read on payroll_carry;  create policy p_read on payroll_carry for select using (true);
+drop policy if exists p_write on payroll_carry; create policy p_write on payroll_carry for all using (true) with check (true);
+
+-- ประเภทการหัก (เพิ่มหัวข้อเองได้)
+create table if not exists deduct_types (
+  name text primary key,
+  created_at timestamptz not null default now()
+);
+alter table deduct_types enable row level security;
+drop policy if exists p_read on deduct_types;  create policy p_read on deduct_types for select using (true);
+drop policy if exists p_write on deduct_types; create policy p_write on deduct_types for all using (true) with check (true);
+insert into deduct_types(name) values ('ทำของเสียหาย'),('เงินขาด (แคชเชียร์)'),('เบิกล่วงหน้า'),('เงินกู้') on conflict do nothing;
+
+-- อัปเดต RPC ให้รองรับ sso (ต้อง drop ก่อนเพราะ return type/signature เปลี่ยน)
+drop function if exists list_employees();
+create function list_employees()
+returns table (id uuid, code text, name text, role text, department text, company_id text, branch_id text, shift_id text, "position" text, pay_type text, base_salary numeric, start_date text, active boolean, sso boolean)
+language sql security definer set search_path = public as $$
+  select e.id, e.code, e.name, e.role, e.department, e.company_id, e.branch_id, e.shift_id,
+         e."position", e.pay_type, e.base_salary, e.start_date, e.active, e.sso
+  from employees e order by e.code;
+$$;
+grant execute on function list_employees() to anon, authenticated;
+
+drop function if exists admin_update_employee(uuid, text, text, text, text, text, text, text, text, numeric, text, boolean, text, text);
+create function admin_update_employee(
+  p_id uuid, p_name text default null, p_role text default null, p_department text default null,
+  p_company_id text default null, p_branch_id text default null, p_shift_id text default null,
+  p_position text default null, p_pay_type text default null, p_base_salary numeric default null,
+  p_start_date text default null, p_active boolean default null, p_username text default null,
+  p_password text default null, p_sso boolean default null
+) returns void language sql security definer set search_path = public as $$
+  update employees set
+    name=coalesce(p_name,name), role=coalesce(p_role,role), department=coalesce(p_department,department),
+    company_id=coalesce(p_company_id,company_id), branch_id=coalesce(p_branch_id,branch_id), shift_id=coalesce(p_shift_id,shift_id),
+    "position"=coalesce(p_position,"position"), pay_type=coalesce(p_pay_type,pay_type), base_salary=coalesce(p_base_salary,base_salary),
+    start_date=coalesce(p_start_date,start_date), active=coalesce(p_active,active), sso=coalesce(p_sso,sso),
+    username=coalesce(nullif(p_username,''),username), password=coalesce(nullif(p_password,''),password)
+  where id=p_id;
+$$;
+grant execute on function admin_update_employee(uuid, text, text, text, text, text, text, text, text, numeric, text, boolean, text, text, boolean) to anon, authenticated;
+
+-- สาขาที่ 2 (ตัวอย่าง — แก้ชื่อ/พิกัดจริงในหน้า "จัดการสาขา")
+insert into branches (id, company_id, name, lat, lng, radius) values
+  ('b2', 'bakery', 'สาขา 2 (แก้พิกัดในแอป)', 16.4400, 103.5100, 150)
+on conflict (id) do nothing;

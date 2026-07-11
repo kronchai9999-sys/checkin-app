@@ -49,11 +49,11 @@ export async function listEmployees() {
 }
 
 // ---------- การตอกบัตร ----------
-export async function savePunch({ employeeId, punchType, lat, lng, distance, branchId }) {
+export async function savePunch({ employeeId, punchType, lat, lng, distance, branchId, ts }) {
   if (!isSupabaseReady) return { demo: true };
-  const { error } = await supabase.from("attendance_logs").insert({
-    employee_id: employeeId, punch_type: punchType, lat, lng, distance, branch_id: branchId,
-  });
+  const row = { employee_id: employeeId, punch_type: punchType, lat, lng, distance, branch_id: branchId };
+  if (ts) row.ts = ts;   // เวลาตอกจริง (สำหรับรายการออฟไลน์ที่ส่งภายหลัง)
+  const { error } = await supabase.from("attendance_logs").insert(row);
   if (error) { console.error("savePunch:", error.message); return { error: error.message }; }
   return { ok: true };
 }
@@ -163,8 +163,51 @@ export async function updateEmployee(id, patch) {
     p_active: patch.active ?? null,
     p_username: patch.username ?? null,
     p_password: patch.password ?? null,
+    p_sso: patch.sso ?? null,
   });
   if (error) { console.error("updateEmployee:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+
+// ---------- จัดการสาขา (branches มี RLS read+write ครบ → PATCH/insert/delete ตรงได้) ----------
+export async function saveBranch(branch) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("branches").upsert(branch);
+  if (error) { console.error("saveBranch:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+export async function deleteBranch(id) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("branches").delete().eq("id", id);
+  if (error) { console.error("deleteBranch:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+
+// ---------- ประเภทการหัก (เพิ่มหัวข้อเองได้) ----------
+export async function listDeductTypes() {
+  if (!isSupabaseReady) return null;
+  const { data, error } = await supabase.from("deduct_types").select("name").order("created_at");
+  if (error) { console.error("listDeductTypes:", error.message); return null; }
+  return data.map((d) => d.name);
+}
+export async function addDeductType(name) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("deduct_types").insert({ name });
+  if (error) { console.error("addDeductType:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+
+// ---------- ยอดยกมา (carry-forward) ----------
+export async function getCarry(employeeId, period) {
+  if (!isSupabaseReady) return null;
+  const { data, error } = await supabase.from("payroll_carry").select("amount").eq("employee_id", employeeId).eq("period", period).maybeSingle();
+  if (error) { console.error("getCarry:", error.message); return null; }
+  return data ? Number(data.amount) : 0;
+}
+export async function saveCarry(employeeId, period, amount) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("payroll_carry").upsert({ employee_id: employeeId, period, amount }, { onConflict: "employee_id,period" });
+  if (error) { console.error("saveCarry:", error.message); return { error: error.message }; }
   return { ok: true };
 }
 

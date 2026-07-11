@@ -1,7 +1,10 @@
 // ข้อมูลตัวอย่างสำหรับ "โหมดเดโม" (เมื่อยังไม่ต่อ Supabase)
 export const DEMO_ORG = {
   companies: [{ id: "bakery", name: "ร้านเบเกอรี่บรรจุภัณฑ์ กาฬสินธุ์" }],
-  branches: [{ id: "b1", company_id: "bakery", name: "สาขากาฬสินธุ์", lat: 16.4322, lng: 103.506, radius: 150 }],
+  branches: [
+    { id: "b1", company_id: "bakery", name: "สาขากาฬสินธุ์", lat: 16.4322, lng: 103.506, radius: 150 },
+    { id: "b2", company_id: "bakery", name: "สาขา 2", lat: 16.44, lng: 103.51, radius: 150 },
+  ],
   shifts: [
     { id: "morning", company_id: "bakery", name: "กะเช้า", start_time: "08:00", end_time: "17:00", lunch_minutes: 60 },
     { id: "afternoon", company_id: "bakery", name: "กะบ่าย", start_time: "13:00", end_time: "22:00", lunch_minutes: 60 },

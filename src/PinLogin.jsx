@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { loginByPin } from "./lib/db.js";
+import { isSupabaseReady } from "./lib/supabase.js";
 
 /**
  * หน้าเข้าสู่ระบบด้วยรหัส PIN 6 หลัก
- * - ระบบจริง: ตรวจ PIN กับ backend (hash) แล้วออก session token
- * - เดโม: เทียบกับ DEMO_PIN ในเครื่อง
+ * - ต่อ Supabase: ตรวจ PIN ผ่าน RPC login_by_pin แล้วคืนข้อมูลพนักงาน
+ * - โหมดเดโม (ยังไม่ตั้ง env): เทียบกับ DEMO_PIN ในเครื่อง
  */
 const DEMO_PIN = "123456";
 const PIN_LENGTH = 6;
@@ -11,6 +13,7 @@ const PIN_LENGTH = 6;
 export default function PinLogin({ onSuccess }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   function press(d) {
     setError(false);
@@ -25,12 +28,24 @@ export default function PinLogin({ onSuccess }) {
     setError(false);
     setPin("");
   }
-  function submit() {
-    if (pin === DEMO_PIN) {
-      onSuccess();
-    } else {
-      setError(true);
-      setPin("");
+  async function submit() {
+    if (busy || pin.length < PIN_LENGTH) return;
+    setBusy(true);
+    try {
+      const emp = await loginByPin(pin);
+      if (emp === undefined) {
+        // โหมดเดโม (ไม่ได้ต่อ DB) — เทียบ PIN ทดสอบ
+        if (pin === DEMO_PIN) return onSuccess(null);
+        setError(true);
+        setPin("");
+      } else if (emp) {
+        onSuccess(emp);
+      } else {
+        setError(true);
+        setPin("");
+      }
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -93,16 +108,16 @@ export default function PinLogin({ onSuccess }) {
         </div>
 
         {/* ปุ่มเข้าสู่ระบบ */}
-        <button onClick={submit} disabled={pin.length < PIN_LENGTH}
+        <button onClick={submit} disabled={pin.length < PIN_LENGTH || busy}
           className={`mt-5 w-full rounded-2xl py-4 text-base font-bold transition ${
-            pin.length < PIN_LENGTH
+            pin.length < PIN_LENGTH || busy
               ? "cursor-not-allowed bg-slate-300 text-white"
               : "bg-slate-500 text-white active:bg-slate-600"
           }`}>
-          เข้าสู่ระบบ
+          {busy ? "กำลังตรวจสอบ…" : "เข้าสู่ระบบ"}
         </button>
       </div>
-      <p className="mt-4 text-xs text-white/60">PIN ทดสอบ: {DEMO_PIN}</p>
+      {!isSupabaseReady && <p className="mt-4 text-xs text-white/60">โหมดเดโม · PIN ทดสอบ: {DEMO_PIN}</p>}
     </div>
   );
 }

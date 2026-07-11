@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { fetchCompanies, savePunch, fetchTodayPunches } from "./lib/db.js";
 
 /**
  * แอปเช็คอินพนักงาน (Standalone PWA) — เช็คอินเข้า/เช็คเอาออก
@@ -81,14 +82,16 @@ function shiftStatus(date, shift, compare) {
 
 const TH = { fontFamily: '"Sarabun","Noto Sans Thai","Prompt",sans-serif' };
 
-export default function CheckIn() {
-  const [companyId, setCompanyId] = useState("bakery");
-  const [branchId, setBranchId] = useState("b1");
-  const [shiftId, setShiftId] = useState("morning");
-  const employeeName = "สมหญิง ใจดี";
+export default function CheckIn({ employee }) {
+  const [companies, setCompanies] = useState(COMPANIES);
+  const [companyId, setCompanyId] = useState(employee?.company_id || "bakery");
+  const [branchId, setBranchId] = useState(employee?.branch_id || "b1");
+  const [shiftId, setShiftId] = useState(employee?.shift_id || "morning");
+  const employeeName = employee?.name || "สมหญิง ใจดี";
+  const locked = Boolean(employee);   // พนักงานจริงถูกผูกสาขา/กะจากระบบหลังบ้าน
 
-  const company = COMPANIES.find((c) => c.id === companyId);
-  const branch = company.branches.find((b) => b.id === branchId);
+  const company = companies.find((c) => c.id === companyId) || companies[0];
+  const branch = company.branches.find((b) => b.id === branchId) || company.branches[0];
   const shift = company.shifts.find((s) => s.id === shiftId) || company.shifts[0];
 
   const [now, setNow] = useState(new Date());
@@ -101,6 +104,45 @@ export default function CheckIn() {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // โหลดบริษัท/สาขา/กะจาก Supabase (ถ้าต่อไว้) + ยึดค่าเริ่มต้นตามพนักงาน
+  useEffect(() => {
+    let alive = true;
+    fetchCompanies().then((list) => {
+      if (!alive || !list || !list.length) return;
+      setCompanies(list);
+      const c = list.find((x) => x.id === employee?.company_id) || list[0];
+      setCompanyId(c.id);
+      setBranchId(employee?.branch_id || c.branches[0]?.id);
+      setShiftId(employee?.shift_id || c.shifts[0]?.id);
+    });
+    return () => { alive = false; };
+  }, [employee]);
+
+  // โหลดการตอกบัตรของพนักงาน "วันนี้" จาก DB มาแสดงสถานะ
+  useEffect(() => {
+    if (!employee?.id) return;
+    let alive = true;
+    fetchTodayPunches(employee.id).then((logs) => {
+      if (!alive || !logs) return;
+      setDone(
+        logs.map((l) => {
+          const t = new Date(l.ts);
+          const p = PUNCHES.find((x) => x.key === l.punch_type);
+          return {
+            key: l.punch_type,
+            label: p?.short || l.punch_type,
+            time: t,
+            timeStr: t.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }),
+            coords: l.lat != null ? { lat: l.lat, lng: l.lng } : null,
+            distance: l.distance,
+            status: shiftStatus(t, shift, p?.compare),
+          };
+        })
+      );
+    });
+    return () => { alive = false; };
+  }, [employee, shift]);
 
   const idx = done.length;                         // ครั้งต่อไป (0=เข้า, 1=เลิก)
   const current = PUNCHES[idx] || null;
@@ -136,29 +178,44 @@ export default function CheckIn() {
     );
   }
 
-  function doPunch() {
+  async function doPunch() {
     if (!ready) return;
     const t = new Date();
+    const punch = current;
+    const at = coords;
+    const dist = distance;
     const rec = {
-      key: current.key,
-      label: current.short,
+      key: punch.key,
+      label: punch.short,
       time: t,
       timeStr: t.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }),
-      coords,
-      distance,
-      status: shiftStatus(t, shift, current.compare),
+      coords: at,
+      distance: dist,
+      status: shiftStatus(t, shift, punch.compare),
     };
     setDone([...done, rec]);
     setCoords(null); setGpsError(null);   // เคลียร์ GPS ให้เช็คใหม่ครั้งถัดไป
-    // ระบบจริง: insert attendance_logs (type=current.key, ts, lat, lng, distance)
+    // บันทึกลง Supabase (ถ้าเป็นพนักงานจริง + ต่อ DB ไว้)
+    if (employee?.id) {
+      const res = await savePunch({
+        employeeId: employee.id,
+        punchType: punch.key,
+        lat: at?.lat,
+        lng: at?.lng,
+        distance: dist,
+        branchId: branch.id,
+      });
+      if (res?.error) setGpsError("บันทึกไม่สำเร็จ: " + res.error);
+    }
   }
 
   function resetDay() {
     setDone([]); setCoords(null); setGpsError(null);
   }
   function changeCompany(id) {
-    const c = COMPANIES.find((x) => x.id === id);
-    setCompanyId(c.id); setBranchId(c.branches[0].id); setShiftId(c.shifts[0].id); resetDay();
+    const c = companies.find((x) => x.id === id);
+    if (!c) return;
+    setCompanyId(c.id); setBranchId(c.branches[0]?.id); setShiftId(c.shifts[0]?.id); resetDay();
   }
 
   const timeStr = now.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -201,12 +258,12 @@ export default function CheckIn() {
         {/* สาขา (กะถูกล็อก) */}
         <div className="space-y-2 rounded-2xl bg-white p-3 shadow-sm">
           <div className="flex gap-2">
-            <select value={companyId} onChange={(e) => changeCompany(e.target.value)}
-              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm">
-              {COMPANIES.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <select value={companyId} onChange={(e) => changeCompany(e.target.value)} disabled={locked}
+              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm disabled:opacity-70">
+              {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <select value={branchId} onChange={(e) => { setBranchId(e.target.value); resetDay(); }}
-              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm">
+            <select value={branchId} onChange={(e) => { setBranchId(e.target.value); resetDay(); }} disabled={locked}
+              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm disabled:opacity-70">
               {company.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>

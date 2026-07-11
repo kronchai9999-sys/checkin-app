@@ -5,6 +5,7 @@ import Timesheet from "./Timesheet.jsx";
 import Payslip from "./Payslip.jsx";
 
 const AUTH_KEY = "checkin_authed";
+const EMP_KEY = "checkin_emp";
 
 const TABS = [
   { id: "checkin", label: "เช็คอิน", icon: "🕐", Comp: CheckIn },
@@ -14,14 +15,21 @@ const TABS = [
 
 export default function App() {
   const [authed, setAuthed] = useState(() => sessionStorage.getItem(AUTH_KEY) === "1");
+  const [employee, setEmployee] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem(EMP_KEY)); } catch { return null; }
+  });
   const [tab, setTab] = useState("checkin");
 
-  function login() {
+  function login(emp) {
     sessionStorage.setItem(AUTH_KEY, "1");
+    if (emp) sessionStorage.setItem(EMP_KEY, JSON.stringify(emp));
+    setEmployee(emp || null);
     setAuthed(true);
   }
   function logout() {
     sessionStorage.removeItem(AUTH_KEY);
+    sessionStorage.removeItem(EMP_KEY);
+    setEmployee(null);
     setAuthed(false);
   }
 
@@ -31,7 +39,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 pb-20">
-      <Active />
+      <Active employee={employee} />
 
       {/* ปุ่มออกจากระบบ */}
       <button onClick={logout}

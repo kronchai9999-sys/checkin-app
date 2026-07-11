@@ -30,11 +30,16 @@ export default function Employees({ employee }) {
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  // แก้ไขพนักงานเดิม
+  const [editing, setEditing] = useState(null);   // employee object หรือ null
+  const [ef, setEf] = useState(null);             // ค่าในฟอร์มแก้ไข
+  const [eBusy, setEBusy] = useState(false);
+  const [eMsg, setEMsg] = useState(null);
+
   useEffect(() => {
     listEmployees().then((l) => l && l.length && setEmps(l));
     fetchOrg().then((o) => { if (o) { setOrg(o); setForm((f) => ({ ...f, branch_id: o.branches[0]?.id, shift_id: o.shifts[0]?.id })); } });
   }, []);
-  // ตั้ง default สาขา/กะ จากเดโมถ้ายังว่าง
   useEffect(() => {
     setForm((f) => ({ ...f, branch_id: f.branch_id || org.branches[0]?.id, shift_id: f.shift_id || org.shifts[0]?.id }));
   }, []); // eslint-disable-line
@@ -66,9 +71,8 @@ export default function Employees({ employee }) {
     const res = await createEmployee(payload);
     setBusy(false);
     if (res?.error) { setMsg({ ok: false, text: "เพิ่มไม่สำเร็จ: " + res.error }); return; }
-    if (res?.demo) {
-      setEmps((l) => [...l, { id: "new-" + Math.random().toString(36).slice(2), active: true, ...payload }]);
-    } else { await refresh(); }
+    if (res?.demo) setEmps((l) => [...l, { id: "new-" + Math.random().toString(36).slice(2), active: true, ...payload }]);
+    else await refresh();
     setMsg({ ok: true, text: `เพิ่ม "${payload.name}" (${ROLE_LABEL[payload.role]}) แล้ว` });
     setForm(blank(org.branches[0]?.id, org.shifts[0]?.id));
   }
@@ -83,11 +87,48 @@ export default function Employees({ employee }) {
     await updateEmployee(emp.id, { active });
   }
 
+  // ---- แก้ไข ----
+  function openEdit(emp) {
+    setEMsg(null);
+    setEf({
+      name: emp.name || "", role: emp.role || "employee", department: emp.department || "front",
+      branch_id: emp.branch_id || org.branches[0]?.id, shift_id: emp.shift_id || org.shifts[0]?.id,
+      position: emp.position || "", pay_type: emp.pay_type || "monthly",
+      base_salary: emp.base_salary ?? "", start_date: emp.start_date || "",
+      username: "", password: "",  // เว้นว่าง = ไม่เปลี่ยน
+    });
+    setEditing(emp);
+  }
+  const setE = (k, v) => setEf((f) => ({ ...f, [k]: v }));
+
+  async function saveEdit(e) {
+    e?.preventDefault();
+    if (eBusy || !editing) return;
+    if (!ef.name.trim()) { setEMsg({ ok: false, text: "กรอกชื่อ" }); return; }
+    setEBusy(true); setEMsg(null);
+    const branch = org.branches.find((b) => b.id === ef.branch_id);
+    const patch = {
+      name: ef.name.trim(), role: ef.role, department: ef.department,
+      company_id: branch?.company_id || "bakery",
+      branch_id: ef.branch_id, shift_id: ef.shift_id,
+      position: ef.position.trim() || null, pay_type: ef.pay_type,
+      base_salary: Number(ef.base_salary) || 0, start_date: ef.start_date.trim() || null,
+    };
+    if (ef.username.trim()) patch.username = ef.username.trim();
+    if (ef.password) patch.password = ef.password;
+    const res = await updateEmployee(editing.id, patch);
+    setEBusy(false);
+    if (res?.error) { setEMsg({ ok: false, text: "บันทึกไม่สำเร็จ: " + res.error }); return; }
+    if (res?.demo) setEmps((l) => l.map((x) => (x.id === editing.id ? { ...x, ...patch } : x)));
+    else await refresh();
+    setEditing(null); setEf(null);
+  }
+
   if (!allowed) return <Page><PageHeader icon="🔒" title="จัดการพนักงาน" accent="amber" /><Card><Empty>เฉพาะผู้บริหารเท่านั้น</Empty></Card></Page>;
 
   return (
     <Page>
-      <PageHeader icon="👥" title="จัดการพนักงาน" accent="amber" subtitle="เพิ่มพนักงาน/ผู้จัดการได้ไม่จำกัด · กำหนดบทบาท/สิทธิ" />
+      <PageHeader icon="👥" title="จัดการพนักงาน" accent="amber" subtitle="เพิ่ม/แก้ไขพนักงาน · กำหนดบทบาท/สิทธิ · เปลี่ยนรหัสผ่าน" />
       {!isSupabaseReady && <DemoTag />}
 
       {/* ฟอร์มเพิ่ม */}
@@ -115,35 +156,62 @@ export default function Employees({ employee }) {
         </form>
       </Card>
 
-      {/* รายชื่อ + กำหนดสิทธิ */}
+      {/* รายชื่อ */}
       <Card className="!p-0">
         <div className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">พนักงานทั้งหมด ({emps.length})</div>
         {emps.map((e) => {
           const inactive = e.active === false;
           return (
-            <div key={e.id} className={`flex items-center justify-between gap-3 border-b border-slate-50 px-4 py-3 last:border-0 ${inactive ? "opacity-50" : ""}`}>
+            <div key={e.id} className={`flex items-center justify-between gap-2 border-b border-slate-50 px-4 py-3 last:border-0 ${inactive ? "opacity-50" : ""}`}>
               <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-slate-800">{e.name} {inactive && <span className="text-xs text-rose-500">(ปิดใช้งาน)</span>}</div>
+                <div className="truncate text-sm font-medium text-slate-800">{e.name} {inactive && <span className="text-xs text-rose-500">(ปิด)</span>}</div>
                 <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
                   <span>{e.code}</span>
                   <Badge tone={e.department === "back" ? "rose" : "slate"}>{e.department === "back" ? "หลังร้าน" : "หน้าร้าน"}</Badge>
+                  <span>{ROLE_LABEL[e.role]}</span>
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <select value={e.role} onChange={(ev) => changeRole(e, ev.target.value)}
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs outline-none focus:border-emerald-500">
-                  {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
-                </select>
-                <button onClick={() => toggleActive(e)}
-                  className={`rounded-lg px-2 py-1.5 text-xs font-medium ring-1 ${inactive ? "text-emerald-600 ring-emerald-200" : "text-rose-500 ring-rose-200"}`}>
-                  {inactive ? "เปิด" : "ปิด"}
-                </button>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <button onClick={() => openEdit(e)} className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-sky-600 ring-1 ring-sky-200 hover:bg-sky-50">แก้ไข</button>
+                <button onClick={() => toggleActive(e)} className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ring-1 ${inactive ? "text-emerald-600 ring-emerald-200" : "text-rose-500 ring-rose-200"}`}>{inactive ? "เปิด" : "ปิด"}</button>
               </div>
             </div>
           );
         })}
       </Card>
       <p className="mt-3 px-1 text-xs text-slate-400">* บทบาท: พนักงาน = ดูของตัวเอง · หัวหน้า/ผู้จัดการ = อนุมัติ+หักเงิน+กำหนดกะ · ผู้บริหาร = ทุกอย่าง+จัดการพนักงาน</p>
+
+      {/* ===== Modal แก้ไข ===== */}
+      {editing && ef && (
+        <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={() => setEditing(null)}>
+          <div className="mt-6 w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl" onClick={(ev) => ev.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-800">แก้ไข: {editing.name} <span className="text-xs font-normal text-slate-400">({editing.code})</span></h3>
+              <button onClick={() => setEditing(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <form onSubmit={saveEdit} className="grid grid-cols-2 gap-3">
+              <Field label="ชื่อ-สกุล"><input className={inputCls} value={ef.name} onChange={(e) => setE("name", e.target.value)} /></Field>
+              <Field label="บทบาท (สิทธิ)"><Select value={ef.role} onChange={(e) => setE("role", e.target.value)}>{ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}</Select></Field>
+              <Field label="แผนก"><Select value={ef.department} onChange={(e) => setE("department", e.target.value)}>{DEPTS.map((d) => <option key={d.v} value={d.v}>{d.l}</option>)}</Select></Field>
+              <Field label="ตำแหน่ง"><input className={inputCls} value={ef.position} onChange={(e) => setE("position", e.target.value)} /></Field>
+              <Field label="สาขา"><Select value={ef.branch_id} onChange={(e) => setE("branch_id", e.target.value)}>{org.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
+              <Field label="กะ"><Select value={ef.shift_id} onChange={(e) => setE("shift_id", e.target.value)}>{org.shifts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+              <Field label="ประเภทค่าจ้าง"><Select value={ef.pay_type} onChange={(e) => setE("pay_type", e.target.value)}><option value="monthly">รายเดือน</option><option value="daily">รายวัน</option></Select></Field>
+              <Field label="เงินเดือน/ค่าจ้าง"><input type="number" min="0" className={inputCls} value={ef.base_salary} onChange={(e) => setE("base_salary", e.target.value)} /></Field>
+              <div className="col-span-2 my-1 border-t border-slate-100 pt-2 text-xs font-medium text-slate-400">เปลี่ยนล็อกอิน (เว้นว่าง = คงเดิม)</div>
+              <Field label="Username ใหม่"><input className={inputCls} value={ef.username} onChange={(e) => setE("username", e.target.value)} autoCapitalize="none" placeholder="เว้นว่าง = ไม่เปลี่ยน" /></Field>
+              <Field label="รหัสผ่านใหม่"><input className={inputCls} value={ef.password} onChange={(e) => setE("password", e.target.value)} placeholder="เว้นว่าง = ไม่เปลี่ยน" /></Field>
+              <div className="col-span-2">
+                {eMsg && <p className={`mb-2 text-sm ${eMsg.ok ? "text-emerald-600" : "text-rose-500"}`}>{eMsg.text}</p>}
+                <div className="flex gap-2">
+                  <button type="submit" disabled={eBusy} className={`flex-1 rounded-xl py-2.5 text-sm font-semibold text-white ${eBusy ? "bg-slate-300" : "bg-emerald-600 active:bg-emerald-700"}`}>{eBusy ? "กำลังบันทึก…" : "บันทึกการแก้ไข"}</button>
+                  <button type="button" onClick={() => setEditing(null)} className="rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-slate-500 ring-1 ring-slate-200">ยกเลิก</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </Page>
   );
 }

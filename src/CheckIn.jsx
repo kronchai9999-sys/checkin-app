@@ -18,22 +18,14 @@ import { isBackOffice } from "./lib/rules.js";
 const COMPANIES = [
   {
     id: "bakery",
-    name: "ร้านเบเกอรี่บรรจุภัณฑ์",
+    name: "ร้านเบเกอรี่บรรจุภัณฑ์ กาฬสินธุ์",
     branches: [
-      { id: "b1", name: "สาขาหนองคาย", lat: 17.8782, lng: 102.742, radius: 150 },
-      { id: "b2", name: "สาขาอุดรธานี", lat: 17.4138, lng: 102.787, radius: 150 },
+      { id: "b1", name: "สาขากาฬสินธุ์", lat: 16.4322, lng: 103.506, radius: 150 },
     ],
     shifts: [
-      { id: "morning", name: "กะเช้า", start: "07:00", end: "16:00" },
+      { id: "morning", name: "กะเช้า", start: "08:00", end: "17:00" },
       { id: "afternoon", name: "กะบ่าย", start: "13:00", end: "22:00" },
-      { id: "night", name: "กะดึก", start: "22:00", end: "06:00" },
     ],
-  },
-  {
-    id: "jimart",
-    name: "jimart ค้าส่ง",
-    branches: [{ id: "j01", name: "คลังกลาง อุดรธานี", lat: 17.4, lng: 102.8, radius: 200 }],
-    shifts: [{ id: "day", name: "กะปกติ", start: "08:00", end: "17:00" }],
   },
 ];
 

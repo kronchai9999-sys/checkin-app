@@ -45,7 +45,8 @@ const blank = (branch, shift) => ({
 
 export default function Employees({ employee }) {
   const allowed = canManageStaff(employee?.role);
-  const [emps, setEmps] = useState(DEMO_EMPLOYEES);
+  // เดโมใช้เฉพาะตอนไม่ได้ต่อ DB — ต่อจริงแล้วต้องไม่ fallback เป็นไอดีปลอมก่อนโหลดรายชื่อเสร็จ
+  const [emps, setEmps] = useState(isSupabaseReady ? [] : DEMO_EMPLOYEES);
   const [org, setOrg] = useState(DEMO_ORG);
   const [form, setForm] = useState(blank());
   const [msg, setMsg] = useState(null);

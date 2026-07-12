@@ -8,7 +8,8 @@ import { Page, PageHeader, Card, Select, Field, DemoTag } from "./ui.jsx";
 
 export default function Payslip({ employee }) {
   const manager = isManager(employee?.role);
-  const [emps, setEmps] = useState(DEMO_EMPLOYEES);
+  // เดโมใช้เฉพาะตอนไม่ได้ต่อ DB — ต่อจริงแล้วต้องไม่ fallback เป็นไอดีปลอมก่อนโหลดรายชื่อเสร็จ
+  const [emps, setEmps] = useState(isSupabaseReady ? [] : DEMO_EMPLOYEES);
   const [org, setOrg] = useState(DEMO_ORG);
   const [period, setPeriod] = useState(currentPeriod());
   const [empId, setEmpId] = useState(employee?.id || DEMO_EMPLOYEES[2].id);
@@ -66,12 +67,13 @@ export default function Payslip({ employee }) {
 
   const nextP = nextPeriodLabel(period.label);
   async function recordCarry() {
-    if (!nextP || c.carryForward <= 0) return;
+    if (!nextP || c.carryForward <= 0 || !emp?.id) return;
     const res = await saveCarry(emp.id, nextP, c.carryForward);
     setCarryMsg(res?.error ? "บันทึกไม่สำเร็จ: " + res.error : `ยกยอด ${baht(c.carryForward)} ไปงวด ${nextP} แล้ว`);
   }
 
   const shareLine = () => {
+    if (!emp?.id) return;
     const text =
       `สลิปเงินเดือน ${period.label}\n${emp.name} (${emp.code})\n` +
       `รายได้รวม ${baht(c.grossEarnings)}\nหักรวม ${baht(c.totalDeductions)}\nสุทธิ ${baht(c.netPay)} บาท`;

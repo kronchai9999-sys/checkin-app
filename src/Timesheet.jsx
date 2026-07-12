@@ -34,7 +34,8 @@ function toInputTime(fmt) {
 export default function Timesheet({ employee }) {
   const manager = isManager(employee?.role);
   const execView = isExec(employee?.role);   // ผู้บริหารแก้/ลบเวลาการตอกบัตรได้โดยตรง ไม่ต้องผ่านอนุมัติ
-  const [emps, setEmps] = useState(DEMO_EMPLOYEES);
+  // เดโมใช้เฉพาะตอนไม่ได้ต่อ DB — ต่อจริงแล้วต้องไม่ fallback เป็นไอดีปลอมก่อนโหลดรายชื่อเสร็จ
+  const [emps, setEmps] = useState(isSupabaseReady ? [] : DEMO_EMPLOYEES);
   const [shifts, setShifts] = useState(DEMO_ORG.shifts);
   const [period, setPeriod] = useState(currentPeriod());
   const [empId, setEmpId] = useState(employee?.id || DEMO_EMPLOYEES[2].id);
@@ -105,6 +106,7 @@ export default function Timesheet({ employee }) {
 
   const [editBusyKey, setEditBusyKey] = useState(null);
   async function editPunch(dateKey, punchType, newValue, hadValue) {
+    if (!emp?.id) return;   // กันพลาดถ้ายังโหลดรายชื่อพนักงานไม่เสร็จ
     const busyKey = dateKey + punchType;
     setEditBusyKey(busyKey);
     if (!newValue) {

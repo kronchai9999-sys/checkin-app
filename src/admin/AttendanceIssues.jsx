@@ -8,7 +8,8 @@ import { Page, PageHeader, Card, Select, Field, Badge, Empty, DemoTag } from "..
 
 export default function AttendanceIssues({ employee }) {
   const allowed = canViewAttendanceIssues(employee?.role);
-  const [emps, setEmps] = useState(DEMO_EMPLOYEES);
+  // เดโมใช้เฉพาะตอนไม่ได้ต่อ DB — ต่อจริงแล้วต้องไม่ fallback เป็นไอดีปลอมก่อนโหลดรายชื่อเสร็จ
+  const [emps, setEmps] = useState(isSupabaseReady ? [] : DEMO_EMPLOYEES);
   const [shifts, setShifts] = useState(DEMO_ORG.shifts);
   const [period, setPeriod] = useState(currentPeriod());
   const [issues, setIssues] = useState([]);   // [{employeeId, employeeName, dateKey, dateLabel, type, lateMin, waivedKind}]

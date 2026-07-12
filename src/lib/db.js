@@ -87,6 +87,17 @@ export async function fetchPeriodPunches(employeeId, fromISO, toISO) {
   return data;
 }
 
+// การตอกบัตรของ "ทุกคน" ในวันเดียว — สำหรับมุมมองผู้บริหาร "ทุกคน (ต่อวัน)"
+export async function fetchDayPunchesAllEmployees(fromISO, toISO) {
+  if (!isSupabaseReady) return [];
+  const { data, error } = await supabase
+    .from("attendance_logs").select("*")
+    .gte("ts", fromISO).lte("ts", toISO)
+    .order("ts", { ascending: true });
+  if (error) { console.error("fetchDayPunchesAllEmployees:", error.message); return []; }
+  return data;
+}
+
 // ---------- บันทึกหักเงิน (แก้บั๊ก deduct_logs) ----------
 export async function saveDeduction({ employeeId, period, type, amount, note, createdBy, createdByName }) {
   if (!isSupabaseReady) return { demo: true };
@@ -132,6 +143,16 @@ export async function listApprovals(status = "pending") {
     .from("approvals").select("*").eq("status", status)
     .order("created_at", { ascending: false });
   if (error) { console.error("listApprovals:", error.message); return null; }
+  return data;
+}
+
+// ประวัติคำขอของพนักงานคนเดียว (โชว์ชื่อผู้อนุมัติย้อนหลังได้ ไม่ใช่แค่ session เดียว)
+export async function listApprovalsForEmployee(employeeId) {
+  if (!isSupabaseReady) return [];
+  const { data, error } = await supabase
+    .from("approvals").select("*").eq("employee_id", employeeId)
+    .order("created_at", { ascending: false }).limit(20);
+  if (error) { console.error("listApprovalsForEmployee:", error.message); return []; }
   return data;
 }
 

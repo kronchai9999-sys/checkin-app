@@ -3,10 +3,10 @@ import { listApprovals, decideApproval, listEmployees, applyTimeEdit, recordManu
 import { isSupabaseReady } from "../lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_APPROVALS } from "../lib/demo.js";
 import { periodLabelForDate } from "../lib/payroll.js";
-import { canApprove, isManager, ROLE_LABEL } from "../lib/rules.js";
+import { canApprove, isManager, ROLE_LABEL, REQUEST_TYPE_LABEL } from "../lib/rules.js";
 import { Page, PageHeader, Card, Badge, Empty, DemoTag } from "../ui.jsx";
 
-const TYPE_LABEL = { shift_change: "ขอเปลี่ยนกะ", leave: "ขอลา", time_edit: "ขอแก้เวลาทำงาน", ot_edit: "ขอแก้ OT", general: "คำขอทั่วไป" };
+const TYPE_LABEL = REQUEST_TYPE_LABEL;
 const AUTO_APPLY_TYPES = new Set(["time_edit", "ot_edit", "leave", "shift_change"]);
 
 export default function Approvals({ employee }) {

@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
-import { listEmployees, fetchOrg, fetchPeriodPunches, createApproval, listWaiversRange, listLeaveLogsForEmployee, getManualOtMinutes, applyTimeEdit, deleteAttendanceLog } from "./lib/db.js";
+import { listEmployees, fetchOrg, fetchPeriodPunches, createApproval, listWaiversRange, listLeaveLogsForEmployee, getManualOtMinutes, applyTimeEdit, deleteAttendanceLog, listApprovalsForEmployee, fetchDayPunchesAllEmployees } from "./lib/db.js";
 import { isSupabaseReady } from "./lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_ORG, demoPunches } from "./lib/demo.js";
-import { PERIODS, monthRange, buildCalendar, summarizePayroll, applyManualOt, currentPeriod, baht, round2 } from "./lib/payroll.js";
-import { RULES, isManager, isExec } from "./lib/rules.js";
+import { PERIODS, monthRange, buildCalendar, summarizePayroll, applyManualOt, currentPeriod, baht, round2, buildDaySummary } from "./lib/payroll.js";
+import { RULES, isManager, isExec, REQUEST_TYPE_LABEL } from "./lib/rules.js";
 import { Page, PageHeader, Card, Stat, Select, Field, inputCls, DemoTag } from "./ui.jsx";
 
 const REQ_TYPES = [
@@ -44,6 +44,13 @@ export default function Timesheet({ employee }) {
   const [leaveLogs, setLeaveLogs] = useState([]);
   const [manualOtMin, setManualOtMin] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [reqHistory, setReqHistory] = useState([]);
+
+  // มุมมองผู้บริหาร: "รายคน" (เดิม) หรือ "ทุกคน (ต่อวัน)"
+  const [viewMode, setViewMode] = useState("person");
+  const [dayDate, setDayDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dayRows, setDayRows] = useState([]);
+  const [dayLoading, setDayLoading] = useState(false);
 
   useEffect(() => {
     listEmployees().then((l) => l && l.length && setEmps(l));
@@ -89,6 +96,37 @@ export default function Timesheet({ employee }) {
     })();
     return () => { alive = false; };
   }, [viewId, period, emp?.id]);
+
+  async function refreshReqHistory() {
+    if (!isSupabaseReady || !emp?.id) { setReqHistory([]); return; }
+    const l = await listApprovalsForEmployee(emp.id);
+    setReqHistory(l || []);
+  }
+  useEffect(() => { refreshReqHistory(); }, [emp?.id]);
+
+  // มุมมองผู้บริหาร "ทุกคน (ต่อวัน)" — ดึงการตอกบัตรของทุกคนในวันที่เลือกทีเดียว
+  useEffect(() => {
+    if (!execView || viewMode !== "day") return;
+    let alive = true;
+    setDayLoading(true);
+    (async () => {
+      const dayStart = new Date(dayDate); dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayDate); dayEnd.setHours(23, 59, 59, 999);
+      const logsAll = isSupabaseReady ? await fetchDayPunchesAllEmployees(dayStart.toISOString(), dayEnd.toISOString()) : [];
+      const dow = new Date(dayDate).getDay();
+      const rows = emps
+        .filter((e) => e.active !== false)
+        .map((e) => {
+          const empShift = shifts.find((s) => s.id === e.shift_id) || shifts[0];
+          const empLogs = (logsAll || []).filter((l) => l.employee_id === e.id);
+          const sum = buildDaySummary(empLogs, empShift);
+          const isOff = (e.off_days || []).includes(dow);
+          return { emp: e, ...sum, isOff, absent: !isOff && !sum.present };
+        });
+      if (alive) { setDayRows(rows); setDayLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, [execView, viewMode, dayDate, emps, shifts]);
 
   const days = useMemo(() => buildCalendar(logs, shift, emp?.off_days, period), [logs, shift, emp?.off_days, period]);
   const t = useMemo(() => applyManualOt(summarizePayroll(days, waivers), manualOtMin), [days, waivers, manualOtMin]);
@@ -179,6 +217,7 @@ export default function Timesheet({ employee }) {
     if (res?.error) { setReqMsg({ ok: false, text: "ส่งไม่สำเร็จ: " + res.error }); return; }
     setReqMsg({ ok: true, text: `ส่งคำขอแล้ว — รอ${reqType === "time_edit" || reqType === "ot_edit" ? "ผู้บริหาร" : "หัวหน้า"}อนุมัติ` });
     setReqDetail(""); setReqDate(""); setReqNewTime(""); setReqOtMinutes(""); setReqDays(1); setReqShiftId("");
+    refreshReqHistory();
   }
 
   return (
@@ -187,6 +226,65 @@ export default function Timesheet({ employee }) {
         subtitle={`${period.label} · ${shift?.name || ""} ${shift?.start_time || ""}–${shift?.end_time || ""} น.`} />
       {!isSupabaseReady && <DemoTag />}
 
+      {execView && (
+        <div className="mb-4 flex gap-2">
+          <button onClick={() => setViewMode("person")}
+            className={`flex-1 rounded-xl py-2.5 text-sm font-semibold ${viewMode === "person" ? "bg-sky-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200"}`}>
+            รายคน
+          </button>
+          <button onClick={() => setViewMode("day")}
+            className={`flex-1 rounded-xl py-2.5 text-sm font-semibold ${viewMode === "day" ? "bg-sky-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200"}`}>
+            ทุกคน (ต่อวัน)
+          </button>
+        </div>
+      )}
+
+      {execView && viewMode === "day" ? (
+        <Card className="!p-0">
+          <div className="border-b border-slate-100 p-4">
+            <Field label="วันที่"><input type="date" className={inputCls} value={dayDate} onChange={(e) => setDayDate(e.target.value)} /></Field>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
+                  <th className="px-3 py-2.5 text-left">พนักงาน</th>
+                  <th className="px-2 py-2.5">เข้า</th>
+                  <th className="px-2 py-2.5">พักออก</th>
+                  <th className="px-2 py-2.5">พักเข้า</th>
+                  <th className="px-2 py-2.5">เลิก</th>
+                  <th className="px-2 py-2.5">สาย</th>
+                  <th className="px-2 py-2.5">OT</th>
+                  <th className="px-2 py-2.5">สถานะ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dayLoading ? (
+                  <tr><td colSpan={8} className="py-8 text-center text-slate-400">กำลังโหลด…</td></tr>
+                ) : dayRows.length === 0 ? (
+                  <tr><td colSpan={8} className="py-8 text-center text-slate-400">ไม่มีพนักงาน</td></tr>
+                ) : dayRows.map((r) => (
+                  <tr key={r.emp.id} className={`border-b border-slate-50 ${r.isOff ? "bg-slate-50/60" : r.absent ? "bg-rose-50/40" : ""}`}>
+                    <td className="px-3 py-2 font-medium text-slate-700">{r.emp.name}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-slate-600">{r.in}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-slate-600">{r.lunchOut}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-slate-600">{r.lunchIn}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-slate-600">{r.out}</td>
+                    <td className={`px-2 py-2 text-center tabular-nums ${r.lateMin > 0 ? "font-semibold text-rose-600" : "text-slate-300"}`}>{r.lateMin > 0 ? `${r.lateMin}′` : "-"}</td>
+                    <td className={`px-2 py-2 text-center tabular-nums ${r.otMin > 0 ? "font-semibold text-amber-600" : "text-slate-300"}`}>{r.otMin > 0 ? `${round2(r.otMin / 60)}ช` : "-"}</td>
+                    <td className="px-2 py-2 text-center text-xs">
+                      {r.isOff ? <span className="text-slate-400">หยุดประจำสัปดาห์</span>
+                        : r.absent ? <span className="font-semibold text-rose-600">ขาด</span>
+                        : <span className="text-emerald-600">ปกติ</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : (
+      <>
       <Card className="mb-4">
         <div className="grid grid-cols-2 gap-3">
           <Field label="งวด">
@@ -313,6 +411,27 @@ export default function Timesheet({ employee }) {
         </div>
       </Card>
 
+      {/* ประวัติคำขอ — โชว์สถานะ + ชื่อผู้อนุมัติ */}
+      {reqHistory.length > 0 && (
+        <Card className="mb-4">
+          <h2 className="mb-2 text-sm font-semibold text-slate-700">ประวัติคำขอ</h2>
+          <div className="divide-y divide-slate-100">
+            {reqHistory.map((r) => (
+              <div key={r.id} className="py-2 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-slate-700">{REQUEST_TYPE_LABEL[r.request_type] || r.request_type}</span>
+                  <span className={r.status === "approved" ? "text-emerald-600" : r.status === "rejected" ? "text-rose-500" : "text-amber-600"}>
+                    {r.status === "approved" ? "อนุมัติแล้ว" : r.status === "rejected" ? "ไม่อนุมัติ" : "รออนุมัติ"}
+                    {r.approver_name ? ` โดย ${r.approver_name}` : ""}
+                  </span>
+                </div>
+                <div className="mt-0.5 text-xs text-slate-400">{r.detail}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {/* ยื่นคำขอ (ลา/เปลี่ยนกะ/แก้เวลา/แก้ OT) → เข้าคิวให้อนุมัติ, อนุมัติแล้วมีผลจริงทันที */}
       <Card>
         <h2 className="mb-2 text-sm font-semibold text-slate-700">ยื่นคำขอถึงหัวหน้า</h2>
@@ -376,6 +495,8 @@ export default function Timesheet({ employee }) {
           <p className="text-xs text-slate-400">“แก้เวลาทำงาน/แก้ OT” หัวหน้าอนุมัติไม่ได้ ต้องผู้บริหาร (ตามกติกา) — อนุมัติแล้วระบบแก้เวลา/เปลี่ยนกะ/เพิ่ม OT/หักวันลาให้อัตโนมัติ</p>
         </form>
       </Card>
+      </>
+      )}
     </Page>
   );
 }

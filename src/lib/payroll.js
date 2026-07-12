@@ -34,6 +34,23 @@ export function monthRange({ year, month }) {
 const fmtDay = (d) => d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
 const minOfDay = (d) => d.getHours() * 60 + d.getMinutes();
 
+// สรุปการตอกบัตร "1 คน 1 วัน" — ใช้กับมุมมองผู้บริหาร "ทุกคน (ต่อวัน)"
+// logsForDay: attendance_logs ของคนคนเดียวในวันนั้น (ทุกแถวเป็นวันเดียวกันอยู่แล้ว)
+export function buildDaySummary(logsForDay, shift) {
+  const start = toMin(shift?.start_time || "08:00");
+  const end = toMin(shift?.end_time || "17:00");
+  const p = {};
+  for (const l of logsForDay || []) p[l.punch_type] = new Date(l.ts);
+  const ci = p.in ? minOfDay(p.in) : null;
+  const co = p.out ? minOfDay(p.out) : null;
+  const lo = p.lunch_out ? minOfDay(p.lunch_out) : null;
+  const li = p.lunch_in ? minOfDay(p.lunch_in) : null;
+  const present = ci != null;
+  const lateMin = present ? Math.max(0, ci - start) : 0;
+  const otMin = co != null ? roundOtMinutes(Math.max(0, co - end)) : 0;
+  return { in: fmtHM(ci), lunchOut: fmtHM(lo), lunchIn: fmtHM(li), out: fmtHM(co), present, lateMin, otMin };
+}
+
 // ---------- ปฏิทินรายวันของงวด (รวมวันหยุดประจำสัปดาห์ + ตรวจขาดงาน) ----------
 // logs: attendance_logs  shift: {start_time,end_time,lunch_minutes}
 // offDays: [0..6] (0=อาทิตย์) — วันที่ isOff จะไม่นับสาย/ขาด

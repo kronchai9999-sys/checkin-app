@@ -67,6 +67,8 @@ export const canManageShiftTypes = (role) => isExec(role);
 // ดูรายงานขาด-สาย + กดไม่หักเงิน = เฉพาะผู้บริหาร
 export const canViewAttendanceIssues = (role) => isExec(role);
 
+export const REQUEST_TYPE_LABEL = { shift_change: "ขอเปลี่ยนกะ", leave: "ขอลา", time_edit: "ขอแก้เวลาทำงาน", ot_edit: "ขอแก้ OT", general: "คำขอทั่วไป" };
+
 export const WEEKDAYS = [
   { v: 0, short: "อา", label: "อาทิตย์" },
   { v: 1, short: "จ", label: "จันทร์" },

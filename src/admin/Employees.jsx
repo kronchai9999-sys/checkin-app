@@ -40,6 +40,7 @@ const blank = (branch, shift) => ({
   role: "employee", department: "front",
   branch_id: branch || "", shift_id: shift || "",
   position: "", pay_type: "monthly", base_salary: "", start_date: "", sso: true, off_days: [0],
+  leave_sick_quota: 30, leave_personal_quota: 6, leave_vacation_quota: 6,
 });
 
 export default function Employees({ employee }) {
@@ -87,6 +88,9 @@ export default function Employees({ employee }) {
       position: form.position.trim() || null,
       pay_type: form.pay_type, base_salary: Number(form.base_salary) || 0,
       start_date: form.start_date.trim() || null, sso: form.sso, off_days: form.off_days,
+      leave_sick_quota: Number(form.leave_sick_quota) || 0,
+      leave_personal_quota: Number(form.leave_personal_quota) || 0,
+      leave_vacation_quota: Number(form.leave_vacation_quota) || 0,
     };
     const res = await createEmployee(payload);
     setBusy(false);
@@ -116,6 +120,9 @@ export default function Employees({ employee }) {
       position: emp.position || "", pay_type: emp.pay_type || "monthly",
       base_salary: emp.base_salary ?? "", start_date: emp.start_date || "",
       sso: emp.sso !== false, off_days: emp.off_days || [0],
+      leave_sick_quota: emp.leave_sick_quota ?? 30,
+      leave_personal_quota: emp.leave_personal_quota ?? 6,
+      leave_vacation_quota: emp.leave_vacation_quota ?? 6,
       username: "", password: "",  // เว้นว่าง = ไม่เปลี่ยน
     });
     setEditing(emp);
@@ -135,6 +142,9 @@ export default function Employees({ employee }) {
       position: ef.position.trim() || null, pay_type: ef.pay_type,
       base_salary: Number(ef.base_salary) || 0, start_date: ef.start_date.trim() || null,
       sso: ef.sso, off_days: ef.off_days,
+      leave_sick_quota: Number(ef.leave_sick_quota) || 0,
+      leave_personal_quota: Number(ef.leave_personal_quota) || 0,
+      leave_vacation_quota: Number(ef.leave_vacation_quota) || 0,
     };
     if (ef.username.trim()) patch.username = ef.username.trim();
     if (ef.password) patch.password = ef.password;
@@ -179,6 +189,9 @@ export default function Employees({ employee }) {
             <span className="mb-1 block text-xs font-medium text-slate-500">วันหยุดประจำสัปดาห์</span>
             <WeekdayPicker value={form.off_days} onChange={(v) => set("off_days", v)} />
           </div>
+          <Field label="โควตาลาป่วย (วัน/ปี)"><input type="number" min="0" className={inputCls} value={form.leave_sick_quota} onChange={(e) => set("leave_sick_quota", e.target.value)} /></Field>
+          <Field label="โควตาลากิจ (วัน/ปี)"><input type="number" min="0" className={inputCls} value={form.leave_personal_quota} onChange={(e) => set("leave_personal_quota", e.target.value)} /></Field>
+          <Field label="โควตาพักร้อน (วัน/ปี)"><input type="number" min="0" className={inputCls} value={form.leave_vacation_quota} onChange={(e) => set("leave_vacation_quota", e.target.value)} /></Field>
           <div className="col-span-2 sm:col-span-3">
             {msg && <p className={`mb-2 text-sm ${msg.ok ? "text-emerald-600" : "text-rose-500"}`}>{msg.text}</p>}
             <button type="submit" disabled={busy} className={`w-full rounded-xl py-3 text-sm font-semibold text-white ${busy ? "bg-slate-300" : "bg-emerald-600 active:bg-emerald-700"}`}>
@@ -240,6 +253,9 @@ export default function Employees({ employee }) {
                 <span className="mb-1 block text-xs font-medium text-slate-500">วันหยุดประจำสัปดาห์</span>
                 <WeekdayPicker value={ef.off_days} onChange={(v) => setE("off_days", v)} />
               </div>
+              <Field label="โควตาลาป่วย (วัน/ปี)"><input type="number" min="0" className={inputCls} value={ef.leave_sick_quota} onChange={(e) => setE("leave_sick_quota", e.target.value)} /></Field>
+              <Field label="โควตาลากิจ (วัน/ปี)"><input type="number" min="0" className={inputCls} value={ef.leave_personal_quota} onChange={(e) => setE("leave_personal_quota", e.target.value)} /></Field>
+              <Field label="โควตาพักร้อน (วัน/ปี)"><input type="number" min="0" className={inputCls} value={ef.leave_vacation_quota} onChange={(e) => setE("leave_vacation_quota", e.target.value)} /></Field>
               <div className="col-span-2 my-1 border-t border-slate-100 pt-2 text-xs font-medium text-slate-400">เปลี่ยนล็อกอิน (เว้นว่าง = คงเดิม)</div>
               <Field label="Username ใหม่"><input className={inputCls} value={ef.username} onChange={(e) => setE("username", e.target.value)} autoCapitalize="none" placeholder="เว้นว่าง = ไม่เปลี่ยน" /></Field>
               <Field label="รหัสผ่านใหม่"><input className={inputCls} value={ef.password} onChange={(e) => setE("password", e.target.value)} placeholder="เว้นว่าง = ไม่เปลี่ยน" /></Field>

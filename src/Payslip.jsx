@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
-import { listEmployees, fetchOrg, fetchPeriodPunches, listDeductionsForEmployee, getCarry, saveCarry, listWaiversRange } from "./lib/db.js";
+import { listEmployees, fetchOrg, fetchPeriodPunches, listDeductionsForEmployee, getCarry, saveCarry, listWaiversRange, getManualOtMinutes } from "./lib/db.js";
 import { isSupabaseReady } from "./lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_ORG, demoPunches, demoDeductions } from "./lib/demo.js";
-import { PERIODS, monthRange, buildCalendar, summarizePayroll, computePayslip, nextPeriodLabel, baht, round2 } from "./lib/payroll.js";
+import { PERIODS, monthRange, buildCalendar, summarizePayroll, applyManualOt, computePayslip, nextPeriodLabel, currentPeriod, baht, round2 } from "./lib/payroll.js";
 import { isManager } from "./lib/rules.js";
 import { Page, PageHeader, Card, Select, Field, DemoTag } from "./ui.jsx";
 
@@ -10,11 +10,12 @@ export default function Payslip({ employee }) {
   const manager = isManager(employee?.role);
   const [emps, setEmps] = useState(DEMO_EMPLOYEES);
   const [org, setOrg] = useState(DEMO_ORG);
-  const [period, setPeriod] = useState(PERIODS[0]);
+  const [period, setPeriod] = useState(currentPeriod());
   const [empId, setEmpId] = useState(employee?.id || DEMO_EMPLOYEES[2].id);
   const [logs, setLogs] = useState([]);
   const [deducts, setDeducts] = useState([]);
   const [waivers, setWaivers] = useState(new Map());
+  const [manualOtMin, setManualOtMin] = useState(0);
   const [carryIn, setCarryIn] = useState(0);
   const [carryMsg, setCarryMsg] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -39,26 +40,28 @@ export default function Payslip({ employee }) {
       const toDate = `${period.year}-${String(period.month).padStart(2, "0")}-31`;
       if (isSupabaseReady && emp?.id) {
         const { fromISO, toISO } = monthRange(period);
-        const [p, d, cy, wv] = await Promise.all([
+        const [p, d, cy, wv, otm] = await Promise.all([
           fetchPeriodPunches(emp.id, fromISO, toISO),
           listDeductionsForEmployee(emp.id, period.label),
           getCarry(emp.id, period.label),
           listWaiversRange(fromDate, toDate),
+          getManualOtMinutes(emp.id, period.label),
         ]);
         if (alive) {
           setLogs(p || []); setDeducts(d || []); setCarryIn(cy || 0);
           setWaivers(new Map((wv || []).filter((w) => w.employee_id === emp.id).map((w) => [w.waive_date, w.kind])));
+          setManualOtMin(otm || 0);
           setLoading(false);
         }
       } else {
-        if (alive) { setLogs(demoPunches(emp, period)); setDeducts(demoDeductions(emp.id, period.label)); setCarryIn(0); setWaivers(new Map()); setLoading(false); }
+        if (alive) { setLogs(demoPunches(emp, period)); setDeducts(demoDeductions(emp.id, period.label)); setCarryIn(0); setWaivers(new Map()); setManualOtMin(0); setLoading(false); }
       }
     })();
     return () => { alive = false; };
   }, [viewId, period, emp?.id]);
 
   const days = useMemo(() => buildCalendar(logs, shift, emp?.off_days, period), [logs, shift, emp?.off_days, period]);
-  const att = useMemo(() => summarizePayroll(days, waivers), [days, waivers]);
+  const att = useMemo(() => applyManualOt(summarizePayroll(days, waivers), manualOtMin), [days, waivers, manualOtMin]);
   const c = useMemo(() => computePayslip(emp || {}, att, deducts, carryIn), [emp, att, deducts, carryIn]);
 
   const nextP = nextPeriodLabel(period.label);

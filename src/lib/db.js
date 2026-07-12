@@ -109,10 +109,10 @@ export async function listDeductionsForEmployee(employeeId, period) {
 }
 
 // ---------- คำขออนุมัติ (โชว์ชื่อผู้อนุมัติ — req 3,4,6) ----------
-export async function createApproval({ requestType, employeeId, detail }) {
+export async function createApproval({ requestType, employeeId, detail, payload }) {
   if (!isSupabaseReady) return { demo: true };
   const { error } = await supabase.from("approvals").insert({
-    request_type: requestType, employee_id: employeeId, detail, status: "pending",
+    request_type: requestType, employee_id: employeeId, detail, payload: payload || null, status: "pending",
   });
   if (error) { console.error("createApproval:", error.message); return { error: error.message }; }
   return { ok: true };
@@ -135,6 +135,65 @@ export async function decideApproval({ id, status, approverId, approverName }) {
   }).eq("id", id);
   if (error) { console.error("decideApproval:", error.message); return { error: error.message }; }
   return { ok: true };
+}
+
+// ---------- นำคำขอที่อนุมัติแล้วไปมีผลจริง ----------
+// แก้เวลาเข้า/เลิกงาน: หาการตอกบัตรวันนั้น (ประเภทเดียวกัน) มาแก้ ถ้าไม่มีให้เพิ่มใหม่
+export async function applyTimeEdit({ employeeId, dateKey, punchType, newTime }) {
+  if (!isSupabaseReady) return { demo: true };
+  const [h, m] = newTime.split(":").map(Number);
+  const ts = new Date(dateKey); ts.setHours(h, m, 0, 0);
+  const dayStart = new Date(dateKey); dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dateKey); dayEnd.setHours(23, 59, 59, 999);
+
+  const { data: existing, error: findErr } = await supabase
+    .from("attendance_logs").select("id")
+    .eq("employee_id", employeeId).eq("punch_type", punchType)
+    .gte("ts", dayStart.toISOString()).lte("ts", dayEnd.toISOString()).limit(1);
+  if (findErr) { console.error("applyTimeEdit find:", findErr.message); return { error: findErr.message }; }
+
+  if (existing && existing.length) {
+    const { error } = await supabase.from("attendance_logs").update({ ts: ts.toISOString() }).eq("id", existing[0].id);
+    if (error) { console.error("applyTimeEdit update:", error.message); return { error: error.message }; }
+  } else {
+    const { error } = await supabase.from("attendance_logs").insert({ employee_id: employeeId, punch_type: punchType, ts: ts.toISOString() });
+    if (error) { console.error("applyTimeEdit insert:", error.message); return { error: error.message }; }
+  }
+  return { ok: true };
+}
+
+// บันทึก OT แบบ manual ที่ผู้บริหารอนุมัติ (บวกเพิ่มจาก OT ที่คำนวณจากตอกบัตร)
+export async function recordManualOt({ employeeId, period, otDate, minutes, note, approvedBy, approvedByName }) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("ot_logs").insert({
+    employee_id: employeeId, period, ot_date: otDate, minutes, note,
+    approved_by: approvedBy, approved_by_name: approvedByName,
+  });
+  if (error) { console.error("recordManualOt:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+export async function getManualOtMinutes(employeeId, period) {
+  if (!isSupabaseReady) return 0;
+  const { data, error } = await supabase.from("ot_logs").select("minutes").eq("employee_id", employeeId).eq("period", period);
+  if (error) { console.error("getManualOtMinutes:", error.message); return 0; }
+  return (data || []).reduce((s, r) => s + Number(r.minutes || 0), 0);
+}
+
+// ---------- วันลา (โควตา + ประวัติ) ----------
+export async function recordLeave({ employeeId, leaveType, days, leaveDate, note, approvedBy, approvedByName }) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("leave_logs").insert({
+    employee_id: employeeId, leave_type: leaveType, days, leave_date: leaveDate, note,
+    approved_by: approvedBy, approved_by_name: approvedByName,
+  });
+  if (error) { console.error("recordLeave:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+export async function listLeaveLogsForEmployee(employeeId) {
+  if (!isSupabaseReady) return [];
+  const { data, error } = await supabase.from("leave_logs").select("*").eq("employee_id", employeeId).order("leave_date", { ascending: false });
+  if (error) { console.error("listLeaveLogsForEmployee:", error.message); return []; }
+  return data;
 }
 
 // ---------- จัดการพนักงาน (สร้าง/แก้/เปิด-ปิด) ----------
@@ -165,6 +224,9 @@ export async function updateEmployee(id, patch) {
     p_password: patch.password ?? null,
     p_sso: patch.sso ?? null,
     p_off_days: patch.off_days ?? null,
+    p_leave_sick_quota: patch.leave_sick_quota ?? null,
+    p_leave_personal_quota: patch.leave_personal_quota ?? null,
+    p_leave_vacation_quota: patch.leave_vacation_quota ?? null,
   });
   if (error) { console.error("updateEmployee:", error.message); return { error: error.message }; }
   return { ok: true };

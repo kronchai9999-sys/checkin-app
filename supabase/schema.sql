@@ -371,3 +371,63 @@ create function admin_update_employee(
   where id=p_id;
 $$;
 grant execute on function admin_update_employee(uuid, text, text, text, text, text, text, text, text, numeric, text, boolean, text, text, boolean, integer[]) to anon, authenticated;
+
+-- ============================================================
+-- ส่วนเสริม (ฟีเจอร์รอบ 4): โควตาวันลา + อนุมัติแก้เวลา/OT ให้มีผลจริง
+-- ============================================================
+
+-- โควตาวันลาต่อปีของแต่ละคน (แก้ได้ในหน้าจัดการพนักงาน)
+alter table employees add column if not exists leave_sick_quota integer not null default 30;
+alter table employees add column if not exists leave_personal_quota integer not null default 6;
+alter table employees add column if not exists leave_vacation_quota integer not null default 6;
+
+-- ประวัติวันลาที่อนุมัติแล้ว (ใช้คำนวณยอดคงเหลือ)
+create table if not exists leave_logs (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid not null references employees(id) on delete cascade,
+  leave_type text not null check (leave_type in ('sick','personal','vacation')),
+  days numeric not null default 1,
+  leave_date text not null,             -- 'YYYY-MM-DD' วันเริ่มลา
+  note text,
+  approved_by uuid references employees(id),
+  approved_by_name text,
+  created_at timestamptz not null default now()
+);
+alter table leave_logs enable row level security;
+drop policy if exists p_read on leave_logs;  create policy p_read on leave_logs for select using (true);
+drop policy if exists p_write on leave_logs; create policy p_write on leave_logs for all using (true) with check (true);
+
+-- อัปเดต RPC ให้รองรับโควตาวันลา (ot_logs/attendance_logs เขียนตรงได้อยู่แล้ว ไม่ต้องแก้)
+drop function if exists list_employees();
+create function list_employees()
+returns table (id uuid, code text, name text, role text, department text, company_id text, branch_id text, shift_id text, "position" text, pay_type text, base_salary numeric, start_date text, active boolean, sso boolean, off_days integer[], leave_sick_quota integer, leave_personal_quota integer, leave_vacation_quota integer)
+language sql security definer set search_path = public as $$
+  select e.id, e.code, e.name, e.role, e.department, e.company_id, e.branch_id, e.shift_id,
+         e."position", e.pay_type, e.base_salary, e.start_date, e.active, e.sso, e.off_days,
+         e.leave_sick_quota, e.leave_personal_quota, e.leave_vacation_quota
+  from employees e order by e.code;
+$$;
+grant execute on function list_employees() to anon, authenticated;
+
+drop function if exists admin_update_employee(uuid, text, text, text, text, text, text, text, text, numeric, text, boolean, text, text, boolean, integer[]);
+create function admin_update_employee(
+  p_id uuid, p_name text default null, p_role text default null, p_department text default null,
+  p_company_id text default null, p_branch_id text default null, p_shift_id text default null,
+  p_position text default null, p_pay_type text default null, p_base_salary numeric default null,
+  p_start_date text default null, p_active boolean default null, p_username text default null,
+  p_password text default null, p_sso boolean default null, p_off_days integer[] default null,
+  p_leave_sick_quota integer default null, p_leave_personal_quota integer default null, p_leave_vacation_quota integer default null
+) returns void language sql security definer set search_path = public as $$
+  update employees set
+    name=coalesce(p_name,name), role=coalesce(p_role,role), department=coalesce(p_department,department),
+    company_id=coalesce(p_company_id,company_id), branch_id=coalesce(p_branch_id,branch_id), shift_id=coalesce(p_shift_id,shift_id),
+    "position"=coalesce(p_position,"position"), pay_type=coalesce(p_pay_type,pay_type), base_salary=coalesce(p_base_salary,base_salary),
+    start_date=coalesce(p_start_date,start_date), active=coalesce(p_active,active), sso=coalesce(p_sso,sso),
+    username=coalesce(nullif(p_username,''),username), password=coalesce(nullif(p_password,''),password),
+    off_days=coalesce(p_off_days,off_days),
+    leave_sick_quota=coalesce(p_leave_sick_quota,leave_sick_quota),
+    leave_personal_quota=coalesce(p_leave_personal_quota,leave_personal_quota),
+    leave_vacation_quota=coalesce(p_leave_vacation_quota,leave_vacation_quota)
+  where id=p_id;
+$$;
+grant execute on function admin_update_employee(uuid, text, text, text, text, text, text, text, text, numeric, text, boolean, text, text, boolean, integer[], integer, integer, integer) to anon, authenticated;

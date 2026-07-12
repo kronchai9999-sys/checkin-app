@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
-import { listApprovals, decideApproval, listEmployees } from "../lib/db.js";
+import { listApprovals, decideApproval, listEmployees, applyTimeEdit, recordManualOt, recordLeave } from "../lib/db.js";
 import { isSupabaseReady } from "../lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_APPROVALS } from "../lib/demo.js";
+import { periodLabelForDate } from "../lib/payroll.js";
 import { canApprove, isManager, ROLE_LABEL } from "../lib/rules.js";
 import { Page, PageHeader, Card, Badge, Empty, DemoTag } from "../ui.jsx";
 
 const TYPE_LABEL = { shift_change: "ขอเปลี่ยนกะ", leave: "ขอลา", time_edit: "ขอแก้เวลาทำงาน", ot_edit: "ขอแก้ OT", general: "คำขอทั่วไป" };
+const AUTO_APPLY_TYPES = new Set(["time_edit", "ot_edit", "leave"]);
 
 export default function Approvals({ employee }) {
   const manager = isManager(employee?.role);
@@ -14,6 +16,7 @@ export default function Approvals({ employee }) {
   const [rows, setRows] = useState(DEMO_APPROVALS);
   const [done, setDone] = useState([]);
   const [busyId, setBusyId] = useState(null);
+  const [errMsg, setErrMsg] = useState(null);   // { id, text }
 
   useEffect(() => {
     listEmployees().then((l) => l && l.length && setEmps(l));
@@ -22,12 +25,45 @@ export default function Approvals({ employee }) {
 
   const empName = (id) => emps.find((e) => e.id === id)?.name || id;
 
+  // อนุมัติ "แก้เวลา/แก้ OT/ลา" แล้วให้มีผลจริงทันที (แก้ attendance_logs / เพิ่ม ot_logs / หักโควตาลา)
+  async function applyPayload(row) {
+    if (!row.payload) return { ok: true };
+    if (row.request_type === "time_edit") {
+      return applyTimeEdit({ employeeId: row.employee_id, dateKey: row.payload.date, punchType: row.payload.punchType, newTime: row.payload.newTime });
+    }
+    if (row.request_type === "ot_edit") {
+      return recordManualOt({
+        employeeId: row.employee_id, period: periodLabelForDate(row.payload.date),
+        otDate: row.payload.date, minutes: row.payload.minutes, note: row.detail,
+        approvedBy: employee?.id, approvedByName: employee?.name,
+      });
+    }
+    if (row.request_type === "leave") {
+      return recordLeave({
+        employeeId: row.employee_id, leaveType: row.payload.leaveType, days: row.payload.days,
+        leaveDate: row.payload.fromDate, note: row.detail,
+        approvedBy: employee?.id, approvedByName: employee?.name,
+      });
+    }
+    return { ok: true };
+  }
+
   async function decide(row, status) {
     if (!canApprove(role, row.request_type)) return;
-    setBusyId(row.id);
+    setBusyId(row.id); setErrMsg(null);
+
+    if (status === "approved") {
+      const applyRes = await applyPayload(row);
+      if (applyRes?.error) {
+        setBusyId(null);
+        setErrMsg({ id: row.id, text: "อนุมัติไม่สำเร็จ: " + applyRes.error });
+        return;
+      }
+    }
+
     const res = await decideApproval({ id: row.id, status, approverId: employee?.id, approverName: employee?.name });
     setBusyId(null);
-    if (res?.error) return;
+    if (res?.error) { setErrMsg({ id: row.id, text: "บันทึกสถานะไม่สำเร็จ: " + res.error }); return; }
     setRows((r) => r.filter((x) => x.id !== row.id));
     setDone((d) => [{ ...row, status, approver_name: employee?.name }, ...d]);
   }
@@ -51,9 +87,13 @@ export default function Approvals({ employee }) {
                   <span className="text-sm font-semibold text-slate-800">{empName(row.employee_id)}</span>
                 </div>
                 <div className="mt-1 text-sm text-slate-600">{row.detail}</div>
+                {AUTO_APPLY_TYPES.has(row.request_type) && (
+                  <div className="mt-1 text-xs text-slate-400">* กดอนุมัติแล้วระบบจะแก้ให้อัตโนมัติทันที</div>
+                )}
+                {errMsg?.id === row.id && <p className="mt-2 text-sm text-rose-500">{errMsg.text}</p>}
                 {allowed ? (
                   <div className="mt-3 flex gap-2">
-                    <button disabled={busyId === row.id} onClick={() => decide(row, "approved")} className="flex-1 rounded-xl bg-emerald-600 py-2 text-sm font-semibold text-white active:bg-emerald-700 disabled:bg-slate-300">อนุมัติ</button>
+                    <button disabled={busyId === row.id} onClick={() => decide(row, "approved")} className="flex-1 rounded-xl bg-emerald-600 py-2 text-sm font-semibold text-white active:bg-emerald-700 disabled:bg-slate-300">{busyId === row.id ? "กำลังดำเนินการ…" : "อนุมัติ"}</button>
                     <button disabled={busyId === row.id} onClick={() => decide(row, "rejected")} className="flex-1 rounded-xl bg-white py-2 text-sm font-semibold text-rose-500 ring-1 ring-rose-200">ไม่อนุมัติ</button>
                   </div>
                 ) : (

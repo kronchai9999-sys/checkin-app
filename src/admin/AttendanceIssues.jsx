@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { listEmployees, fetchOrg, fetchPeriodPunches, listWaiversRange, setWaiver, removeWaiver } from "../lib/db.js";
 import { isSupabaseReady } from "../lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_ORG, demoPunches } from "../lib/demo.js";
-import { PERIODS, monthRange, buildCalendar } from "../lib/payroll.js";
+import { PERIODS, monthRange, buildCalendar, currentPeriod } from "../lib/payroll.js";
 import { canViewAttendanceIssues } from "../lib/rules.js";
 import { Page, PageHeader, Card, Select, Field, Badge, Empty, DemoTag } from "../ui.jsx";
 
@@ -10,7 +10,7 @@ export default function AttendanceIssues({ employee }) {
   const allowed = canViewAttendanceIssues(employee?.role);
   const [emps, setEmps] = useState(DEMO_EMPLOYEES);
   const [shifts, setShifts] = useState(DEMO_ORG.shifts);
-  const [period, setPeriod] = useState(PERIODS[0]);
+  const [period, setPeriod] = useState(currentPeriod());
   const [issues, setIssues] = useState([]);   // [{employeeId, employeeName, dateKey, dateLabel, type, lateMin, waivedKind}]
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState(null);

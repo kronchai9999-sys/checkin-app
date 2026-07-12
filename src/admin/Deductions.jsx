@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { listEmployees, saveDeduction, listDeductions, listDeductTypes, addDeductType } from "../lib/db.js";
 import { isSupabaseReady } from "../lib/supabase.js";
 import { DEMO_EMPLOYEES } from "../lib/demo.js";
-import { PERIODS, baht } from "../lib/payroll.js";
+import { PERIODS, currentPeriod, baht } from "../lib/payroll.js";
 import { isManager } from "../lib/rules.js";
 import { Page, PageHeader, Card, Select, Field, inputCls, Empty, DemoTag } from "../ui.jsx";
 
@@ -12,7 +12,7 @@ export default function Deductions({ employee }) {
   const manager = isManager(employee?.role);
   const [emps, setEmps] = useState(DEMO_EMPLOYEES);
   const [types, setTypes] = useState(DEFAULT_TYPES);
-  const [period, setPeriod] = useState(PERIODS[0].label);
+  const [period, setPeriod] = useState(currentPeriod().label);
   const [empId, setEmpId] = useState(DEMO_EMPLOYEES[2]?.id);
   const [type, setType] = useState(DEFAULT_TYPES[0]);
   const [amount, setAmount] = useState("");

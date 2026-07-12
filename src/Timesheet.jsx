@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
-import { listEmployees, fetchOrg, fetchPeriodPunches, createApproval, listWaiversRange } from "./lib/db.js";
+import { listEmployees, fetchOrg, fetchPeriodPunches, createApproval, listWaiversRange, listLeaveLogsForEmployee, getManualOtMinutes } from "./lib/db.js";
 import { isSupabaseReady } from "./lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_ORG, demoPunches } from "./lib/demo.js";
-import { PERIODS, monthRange, buildCalendar, summarizePayroll, baht, round2 } from "./lib/payroll.js";
+import { PERIODS, monthRange, buildCalendar, summarizePayroll, applyManualOt, currentPeriod, baht, round2 } from "./lib/payroll.js";
 import { RULES, isManager } from "./lib/rules.js";
 import { Page, PageHeader, Card, Stat, Select, Field, inputCls, DemoTag } from "./ui.jsx";
 
@@ -12,15 +12,28 @@ const REQ_TYPES = [
   { id: "time_edit", label: "ขอแก้เวลาทำงาน" },
   { id: "ot_edit", label: "ขอแก้ OT" },
 ];
+const LEAVE_TYPES = [
+  { v: "sick", l: "ลาป่วย" },
+  { v: "personal", l: "ลากิจ" },
+  { v: "vacation", l: "ลาพักร้อน" },
+];
+const PUNCH_TYPES = [
+  { v: "in", l: "เข้างาน" },
+  { v: "out", l: "เลิกงาน" },
+  { v: "lunch_out", l: "พักเที่ยง (ออก)" },
+  { v: "lunch_in", l: "พักเที่ยง (เข้า)" },
+];
 
 export default function Timesheet({ employee }) {
   const manager = isManager(employee?.role);
   const [emps, setEmps] = useState(DEMO_EMPLOYEES);
   const [shifts, setShifts] = useState(DEMO_ORG.shifts);
-  const [period, setPeriod] = useState(PERIODS[0]);
+  const [period, setPeriod] = useState(currentPeriod());
   const [empId, setEmpId] = useState(employee?.id || DEMO_EMPLOYEES[2].id);
   const [logs, setLogs] = useState([]);
   const [waivers, setWaivers] = useState(new Map());
+  const [leaveLogs, setLeaveLogs] = useState([]);
+  const [manualOtMin, setManualOtMin] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,39 +54,81 @@ export default function Timesheet({ employee }) {
       const toDate = `${period.year}-${String(period.month).padStart(2, "0")}-31`;
       if (isSupabaseReady && emp?.id) {
         const { fromISO, toISO } = monthRange(period);
-        const [data, wv] = await Promise.all([
+        const [data, wv, ll, otm] = await Promise.all([
           fetchPeriodPunches(emp.id, fromISO, toISO),
           listWaiversRange(fromDate, toDate),
+          listLeaveLogsForEmployee(emp.id),
+          getManualOtMinutes(emp.id, period.label),
         ]);
         if (alive) {
           setLogs(data || []);
           setWaivers(new Map((wv || []).filter((w) => w.employee_id === emp.id).map((w) => [w.waive_date, w.kind])));
+          setLeaveLogs(ll || []);
+          setManualOtMin(otm || 0);
           setLoading(false);
         }
       } else {
-        if (alive) { setLogs(demoPunches(emp, period)); setWaivers(new Map()); setLoading(false); }
+        if (alive) { setLogs(demoPunches(emp, period)); setWaivers(new Map()); setLeaveLogs([]); setManualOtMin(0); setLoading(false); }
       }
     })();
     return () => { alive = false; };
   }, [viewId, period, emp?.id]);
 
   const days = useMemo(() => buildCalendar(logs, shift, emp?.off_days, period), [logs, shift, emp?.off_days, period]);
-  const t = useMemo(() => summarizePayroll(days, waivers), [days, waivers]);
+  const t = useMemo(() => applyManualOt(summarizePayroll(days, waivers), manualOtMin), [days, waivers, manualOtMin]);
 
-  // ยื่นคำขอ → เข้าคิวอนุมัติ
+  const currentYear = new Date().getFullYear();
+  const leaveUsed = useMemo(() => {
+    const used = { sick: 0, personal: 0, vacation: 0 };
+    for (const l of leaveLogs) {
+      if (!l.leave_date?.startsWith(String(currentYear))) continue;
+      used[l.leave_type] = (used[l.leave_type] || 0) + Number(l.days || 0);
+    }
+    return used;
+  }, [leaveLogs, currentYear]);
+
+  // ยื่นคำขอ → เข้าคิวอนุมัติ (แก้เวลา/OT/ลา ใส่รายละเอียดแบบมีโครงสร้าง → อนุมัติแล้วมีผลจริงอัตโนมัติ)
   const [reqType, setReqType] = useState(REQ_TYPES[0].id);
   const [reqDetail, setReqDetail] = useState("");
+  const [reqDate, setReqDate] = useState("");
+  const [reqLeaveType, setReqLeaveType] = useState(LEAVE_TYPES[0].v);
+  const [reqDays, setReqDays] = useState(1);
+  const [reqPunchType, setReqPunchType] = useState(PUNCH_TYPES[0].v);
+  const [reqNewTime, setReqNewTime] = useState("");
+  const [reqOtMinutes, setReqOtMinutes] = useState("");
   const [reqMsg, setReqMsg] = useState(null);
   const [reqBusy, setReqBusy] = useState(false);
+
   async function sendRequest(e) {
     e?.preventDefault();
-    if (reqBusy || !reqDetail.trim()) return;
+    if (reqBusy) return;
+    const note = reqDetail.trim();
+    let detail = note, payload = null;
+
+    if (reqType === "leave") {
+      if (!reqDate) { setReqMsg({ ok: false, text: "เลือกวันที่จะลา" }); return; }
+      const leaveLabel = LEAVE_TYPES.find((l) => l.v === reqLeaveType)?.l;
+      detail = `${leaveLabel} ${reqDays} วัน เริ่ม ${reqDate}${note ? " · " + note : ""}`;
+      payload = { leaveType: reqLeaveType, days: Number(reqDays) || 1, fromDate: reqDate };
+    } else if (reqType === "time_edit") {
+      if (!reqDate || !reqNewTime) { setReqMsg({ ok: false, text: "เลือกวันที่และเวลาที่ต้องการแก้" }); return; }
+      const punchLabel = PUNCH_TYPES.find((p) => p.v === reqPunchType)?.l;
+      detail = `ขอแก้เวลา${punchLabel} วันที่ ${reqDate} เป็น ${reqNewTime}${note ? " · " + note : ""}`;
+      payload = { date: reqDate, punchType: reqPunchType, newTime: reqNewTime };
+    } else if (reqType === "ot_edit") {
+      if (!reqDate || !reqOtMinutes) { setReqMsg({ ok: false, text: "เลือกวันที่และจำนวนนาที OT" }); return; }
+      detail = `ขอ OT วันที่ ${reqDate} จำนวน ${reqOtMinutes} นาที${note ? " · " + note : ""}`;
+      payload = { date: reqDate, minutes: Number(reqOtMinutes) };
+    } else if (!note) {
+      setReqMsg({ ok: false, text: "กรอกรายละเอียด" }); return;
+    }
+
     setReqBusy(true); setReqMsg(null);
-    const res = await createApproval({ requestType: reqType, employeeId: employee?.id, detail: reqDetail.trim() });
+    const res = await createApproval({ requestType: reqType, employeeId: employee?.id, detail, payload });
     setReqBusy(false);
     if (res?.error) { setReqMsg({ ok: false, text: "ส่งไม่สำเร็จ: " + res.error }); return; }
-    setReqMsg({ ok: true, text: "ส่งคำขอแล้ว — รอหัวหน้าอนุมัติ" });
-    setReqDetail("");
+    setReqMsg({ ok: true, text: `ส่งคำขอแล้ว — รอ${reqType === "time_edit" || reqType === "ot_edit" ? "ผู้บริหาร" : "หัวหน้า"}อนุมัติ` });
+    setReqDetail(""); setReqDate(""); setReqNewTime(""); setReqOtMinutes(""); setReqDays(1);
   }
 
   return (
@@ -153,33 +208,86 @@ export default function Timesheet({ employee }) {
         <Stat label="เงิน OT" value={`${baht(t.otPay)}`} tone="amber" />
       </div>
 
-      <Card>
+      <Card className="mb-4">
         <div className="flex items-center justify-between text-sm">
           <span className="text-slate-500">หักมาสาย (เกินผ่อนผัน {RULES.lateGraceMinutesPerMonth} น. → {t.lateChargeable} น. × {RULES.lateRatePerMinute})</span>
           <span className="font-semibold text-rose-600">- {baht(t.lateDeduct)}</span>
         </div>
-        <p className="mt-2 text-xs text-slate-400">* OT ปัดเป็นชั่วโมงเต็ม (เศษ ≥ {RULES.otRoundUpAtMinutes} น. ปัดขึ้น 1 ชม.) — ยอดนี้ส่งเข้าสลิปอัตโนมัติ</p>
+        <p className="mt-2 text-xs text-slate-400">
+          * OT ปัดเป็นชั่วโมงเต็ม (เศษ ≥ {RULES.otRoundUpAtMinutes} น. ปัดขึ้น 1 ชม.) — ยอดนี้ส่งเข้าสลิปอัตโนมัติ
+          {manualOtMin > 0 && ` · รวม OT ที่ผู้บริหารอนุมัติพิเศษ ${manualOtMin} นาที`}
+        </p>
       </Card>
 
-      {/* ยื่นคำขอ (ลา/เปลี่ยนกะ/แก้เวลา) → เข้าคิวให้หัวหน้าอนุมัติ */}
-      <Card className="mt-4">
+      {/* สรุปวันลา */}
+      <Card className="mb-4">
+        <h2 className="mb-2 text-sm font-semibold text-slate-700">สรุปวันลา (ปี {currentYear})</h2>
+        <div className="grid grid-cols-3 gap-3 text-center">
+          {LEAVE_TYPES.map((lt) => {
+            const quota = emp?.[`leave_${lt.v}_quota`] ?? 0;
+            const used = leaveUsed[lt.v] || 0;
+            const remain = quota - used;
+            return (
+              <div key={lt.v} className="rounded-xl bg-slate-50 py-2">
+                <div className="text-xs text-slate-400">{lt.l}</div>
+                <div className={`text-lg font-bold tabular-nums ${remain <= 0 ? "text-rose-600" : "text-slate-800"}`}>{remain}</div>
+                <div className="text-[11px] text-slate-400">จาก {quota} · ใช้ {used}</div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* ยื่นคำขอ (ลา/เปลี่ยนกะ/แก้เวลา/แก้ OT) → เข้าคิวให้อนุมัติ, อนุมัติแล้วมีผลจริงทันที */}
+      <Card>
         <h2 className="mb-2 text-sm font-semibold text-slate-700">ยื่นคำขอถึงหัวหน้า</h2>
         <form onSubmit={sendRequest} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="ประเภทคำขอ">
-              <Select value={reqType} onChange={(e) => setReqType(e.target.value)}>
-                {REQ_TYPES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-              </Select>
-            </Field>
-            <Field label="รายละเอียด">
-              <input value={reqDetail} onChange={(e) => setReqDetail(e.target.value)} className={inputCls} placeholder="เช่น ลากิจ 12 ก.ค." />
-            </Field>
-          </div>
+          <Field label="ประเภทคำขอ">
+            <Select value={reqType} onChange={(e) => setReqType(e.target.value)}>
+              {REQ_TYPES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+            </Select>
+          </Field>
+
+          {reqType === "leave" && (
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="ประเภทการลา">
+                <Select value={reqLeaveType} onChange={(e) => setReqLeaveType(e.target.value)}>
+                  {LEAVE_TYPES.map((l) => <option key={l.v} value={l.v}>{l.l}</option>)}
+                </Select>
+              </Field>
+              <Field label="วันที่เริ่มลา"><input type="date" className={inputCls} value={reqDate} onChange={(e) => setReqDate(e.target.value)} /></Field>
+              <Field label="จำนวนวัน"><input type="number" min="0.5" step="0.5" className={inputCls} value={reqDays} onChange={(e) => setReqDays(e.target.value)} /></Field>
+            </div>
+          )}
+
+          {reqType === "time_edit" && (
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="วันที่"><input type="date" className={inputCls} value={reqDate} onChange={(e) => setReqDate(e.target.value)} /></Field>
+              <Field label="ช่วงเวลา">
+                <Select value={reqPunchType} onChange={(e) => setReqPunchType(e.target.value)}>
+                  {PUNCH_TYPES.map((p) => <option key={p.v} value={p.v}>{p.l}</option>)}
+                </Select>
+              </Field>
+              <Field label="เวลาที่ถูกต้อง"><input type="time" className={inputCls} value={reqNewTime} onChange={(e) => setReqNewTime(e.target.value)} /></Field>
+            </div>
+          )}
+
+          {reqType === "ot_edit" && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="วันที่"><input type="date" className={inputCls} value={reqDate} onChange={(e) => setReqDate(e.target.value)} /></Field>
+              <Field label="จำนวน OT (นาที)"><input type="number" min="1" className={inputCls} value={reqOtMinutes} onChange={(e) => setReqOtMinutes(e.target.value)} /></Field>
+            </div>
+          )}
+
+          <Field label={reqType === "shift_change" ? "รายละเอียด" : "หมายเหตุ (ถ้ามี)"}>
+            <input value={reqDetail} onChange={(e) => setReqDetail(e.target.value)} className={inputCls} placeholder={reqType === "shift_change" ? "เช่น ขอเปลี่ยนกะเช้า → กะบ่าย" : "เช่น เหตุผลเพิ่มเติม"} />
+          </Field>
+
           {reqMsg && <p className={`text-sm ${reqMsg.ok ? "text-emerald-600" : "text-rose-500"}`}>{reqMsg.text}</p>}
-          <button type="submit" disabled={reqBusy || !reqDetail.trim()} className={`w-full rounded-xl py-2.5 text-sm font-semibold text-white ${reqBusy || !reqDetail.trim() ? "bg-slate-300" : "bg-sky-600 active:bg-sky-700"}`}>
+          <button type="submit" disabled={reqBusy} className={`w-full rounded-xl py-2.5 text-sm font-semibold text-white ${reqBusy ? "bg-slate-300" : "bg-sky-600 active:bg-sky-700"}`}>
             {reqBusy ? "กำลังส่ง…" : "ส่งคำขอ"}
           </button>
-          <p className="text-xs text-slate-400">“แก้เวลาทำงาน/แก้ OT” หัวหน้าอนุมัติไม่ได้ ต้องผู้บริหาร (ตามกติกา)</p>
+          <p className="text-xs text-slate-400">“แก้เวลาทำงาน/แก้ OT” หัวหน้าอนุมัติไม่ได้ ต้องผู้บริหาร (ตามกติกา) — อนุมัติแล้วระบบแก้เวลา/เพิ่ม OT/หักวันลาให้อัตโนมัติ</p>
         </form>
       </Card>
     </Page>

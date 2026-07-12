@@ -1,11 +1,29 @@
 import { RULES, roundOtMinutes, toMin } from "./rules.js";
 
-// ---------- งวด (period) ----------
-export const PERIODS = [
-  { label: "กรกฎาคม 2026", year: 2026, month: 7 },
-  { label: "สิงหาคม 2026", year: 2026, month: 8 },
-  { label: "กันยายน 2026", year: 2026, month: 9 },
-];
+// ---------- งวด (period) — สร้างอัตโนมัติจากวันที่ปัจจุบันเสมอ (ไม่ตายตัว) ----------
+const TH_MONTHS = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+export const monthLabel = (year, month) => `${TH_MONTHS[month - 1]} ${year}`;
+export const periodLabelForDate = (dateKey) => {
+  const [y, m] = dateKey.split("-").map(Number);
+  return monthLabel(y, m);
+};
+
+// ย้อนหลัง 6 เดือน ถึงล่วงหน้า 3 เดือน จากวันนี้ — เลื่อนตามเวลาจริงเสมอ ไม่ต้องแก้โค้ดทุกเดือน
+export const PERIODS = (() => {
+  const now = new Date();
+  const list = [];
+  for (let offset = -6; offset <= 3; offset++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const year = d.getFullYear(), month = d.getMonth() + 1;
+    list.push({ label: monthLabel(year, month), year, month });
+  }
+  return list;
+})();
+
+export function currentPeriod() {
+  const now = new Date();
+  return PERIODS.find((p) => p.year === now.getFullYear() && p.month === now.getMonth() + 1) || PERIODS[PERIODS.length - 1];
+}
 
 export function monthRange({ year, month }) {
   const from = new Date(year, month - 1, 1, 0, 0, 0);
@@ -84,6 +102,14 @@ export function summarizePayroll(days, waivers) {
   const otHours = otTotalMin / 60;
   const otPay = otHours * RULES.otRatePerHour;
   return { lateTotal, absentDays, otTotalMin, workedTotalMin, presentDays, lateChargeable, lateDeduct, otHours, otPay };
+}
+
+// รวม OT ที่อนุมัติแบบ manual (จากคำขอ "แก้ OT" ที่ผู้บริหารอนุมัติ) เข้ากับ OT ที่คำนวณจากตอกบัตร
+export function applyManualOt(att, manualMinutes) {
+  const otTotalMin = (att.otTotalMin || 0) + (manualMinutes || 0);
+  const otHours = otTotalMin / 60;
+  const otPay = otHours * RULES.otRatePerHour;
+  return { ...att, otTotalMin, otHours, otPay };
 }
 
 // ---------- คำนวณสลิปเงินเดือน ----------

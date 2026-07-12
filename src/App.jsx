@@ -60,17 +60,17 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50 to-amber-50" style={TH}>
       {/* ===== แบรนด์ + ผู้ใช้ ===== */}
-      <div className="bg-gradient-to-r from-stone-800 to-amber-900 px-4 py-4 sm:px-6">
+      <div className="bg-gradient-to-r from-pink-700 via-rose-800 to-stone-900 px-4 py-4 sm:px-6">
         <div className="mx-auto flex max-w-5xl items-center gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-pink-100 text-center leading-none shadow">
-            <span className="text-sm font-extrabold text-pink-600">บ<span className="text-amber-500">S</span></span>
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow">
+            <img src="/logo.png" alt="เขเกอรรี่บรรจุภัณฑ์" className="h-full w-full object-contain p-1" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-xs text-amber-200">{ROLE_LABEL[employee?.role] || "พนักงาน"}</div>
+            <div className="text-xs text-pink-200">{ROLE_LABEL[employee?.role] || "พนักงาน"}</div>
             <div className="truncate text-base font-bold text-white sm:text-lg">เบเกอร์บรรจุภัณฑ์ กาฬสินธุ์</div>
           </div>
           <button onClick={logout}
-            className="shrink-0 rounded-xl bg-amber-900/60 px-4 py-2.5 text-xs font-semibold text-white ring-1 ring-white/20 hover:bg-amber-900">
+            className="shrink-0 rounded-xl bg-stone-900/60 px-4 py-2.5 text-xs font-semibold text-white ring-1 ring-white/20 hover:bg-stone-900">
             ออกจากระบบ
           </button>
         </div>
@@ -84,7 +84,7 @@ export default function App() {
             return (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition ${
-                  active ? "bg-stone-800 text-white shadow" : "bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-amber-50"
+                  active ? "bg-pink-700 text-white shadow" : "bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-pink-50"
                 }`}>
                 <span>{t.icon}</span>
                 {t.label}

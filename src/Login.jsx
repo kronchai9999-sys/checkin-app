@@ -42,13 +42,9 @@ export default function Login({ onSuccess }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center bg-gradient-to-b from-amber-700 to-amber-900 px-6 pt-16">
-      <div className="flex h-28 w-28 items-center justify-center rounded-3xl bg-rose-50 shadow-lg">
-        <div className="text-center leading-tight">
-          <div className="text-xl font-extrabold text-fuchsia-600">เบเกอร์<span className="text-amber-500">S</span></div>
-          <div className="text-xs font-bold text-fuchsia-700">บรรจุภัณฑ์</div>
-          <div className="mt-1 text-[9px] text-slate-500">กาฬสินธุ์</div>
-        </div>
+    <div className="flex min-h-screen flex-col items-center bg-gradient-to-b from-pink-700 via-rose-800 to-stone-900 px-6 pt-16">
+      <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-3xl bg-white shadow-lg">
+        <img src="/logo.png" alt="เขเกอรรี่บรรจุภัณฑ์" className="h-full w-full object-contain p-2" />
       </div>
       <h1 className="mt-5 text-2xl font-bold text-white">เข้าสู่ระบบ</h1>
 
@@ -70,7 +66,7 @@ export default function Login({ onSuccess }) {
 
         <button type="submit" disabled={!username || !password || busy}
           className={`w-full rounded-2xl py-3.5 text-base font-bold text-white transition ${
-            !username || !password || busy ? "cursor-not-allowed bg-slate-300" : "bg-emerald-600 active:bg-emerald-700"
+            !username || !password || busy ? "cursor-not-allowed bg-slate-300" : "bg-pink-600 active:bg-pink-700"
           }`}>
           {busy ? "กำลังตรวจสอบ…" : "เข้าสู่ระบบ"}
         </button>

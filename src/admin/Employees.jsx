@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { listEmployees, fetchOrg, createEmployee, updateEmployee } from "../lib/db.js";
+import { listEmployees, fetchOrg, createEmployee, updateEmployee, adminDeleteEmployee } from "../lib/db.js";
 import { isSupabaseReady } from "../lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_ORG } from "../lib/demo.js";
 import { canManageStaff, ROLE_LABEL, WEEKDAYS } from "../lib/rules.js";
@@ -111,6 +111,22 @@ export default function Employees({ employee }) {
     await updateEmployee(emp.id, { active });
   }
 
+  const [deleteBusy, setDeleteBusy] = useState(null);
+  async function removeEmployee(emp) {
+    const sure = window.confirm(
+      `ลบ "${emp.name}" (${emp.code}) ถาวร?\n\n` +
+      `⚠️ ประวัติทั้งหมดของคนนี้จะถูกลบไปด้วย: การเช็คอิน, สลิป/รายการหัก, วันลา, OT, ยอดยกมา\n` +
+      `กู้คืนไม่ได้ — ถ้าแค่ต้องการพักงาน ใช้ปุ่ม "ปิด" แทน`
+    );
+    if (!sure) return;
+    setDeleteBusy(emp.id);
+    const res = await adminDeleteEmployee(emp.id);
+    setDeleteBusy(null);
+    if (res?.error) { setMsg({ ok: false, text: "ลบไม่สำเร็จ: " + res.error }); return; }
+    if (res?.demo) setEmps((l) => l.filter((x) => x.id !== emp.id));
+    else await refresh();
+  }
+
   // ---- แก้ไข ----
   function openEdit(emp) {
     setEMsg(null);
@@ -219,6 +235,7 @@ export default function Employees({ employee }) {
               <div className="flex shrink-0 items-center gap-1.5">
                 <button onClick={() => openEdit(e)} className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-sky-600 ring-1 ring-sky-200 hover:bg-sky-50">แก้ไข</button>
                 <button onClick={() => toggleActive(e)} className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ring-1 ${inactive ? "text-emerald-600 ring-emerald-200" : "text-rose-500 ring-rose-200"}`}>{inactive ? "เปิด" : "ปิด"}</button>
+                <button onClick={() => removeEmployee(e)} disabled={deleteBusy === e.id} className="rounded-lg bg-rose-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:bg-slate-300">{deleteBusy === e.id ? "…" : "ลบถาวร"}</button>
               </div>
             </div>
           );

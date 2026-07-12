@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { listApprovals, decideApproval, listEmployees, applyTimeEdit, recordManualOt, recordLeave } from "../lib/db.js";
+import { listApprovals, decideApproval, listEmployees, applyTimeEdit, recordManualOt, recordLeave, setEmployeeShift } from "../lib/db.js";
 import { isSupabaseReady } from "../lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_APPROVALS } from "../lib/demo.js";
 import { periodLabelForDate } from "../lib/payroll.js";
@@ -7,7 +7,7 @@ import { canApprove, isManager, ROLE_LABEL } from "../lib/rules.js";
 import { Page, PageHeader, Card, Badge, Empty, DemoTag } from "../ui.jsx";
 
 const TYPE_LABEL = { shift_change: "ขอเปลี่ยนกะ", leave: "ขอลา", time_edit: "ขอแก้เวลาทำงาน", ot_edit: "ขอแก้ OT", general: "คำขอทั่วไป" };
-const AUTO_APPLY_TYPES = new Set(["time_edit", "ot_edit", "leave"]);
+const AUTO_APPLY_TYPES = new Set(["time_edit", "ot_edit", "leave", "shift_change"]);
 
 export default function Approvals({ employee }) {
   const manager = isManager(employee?.role);
@@ -44,6 +44,9 @@ export default function Approvals({ employee }) {
         leaveDate: row.payload.fromDate, note: row.detail,
         approvedBy: employee?.id, approvedByName: employee?.name,
       });
+    }
+    if (row.request_type === "shift_change") {
+      return setEmployeeShift(row.employee_id, row.payload.shiftId);
     }
     return { ok: true };
   }

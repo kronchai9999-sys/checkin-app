@@ -431,3 +431,15 @@ create function admin_update_employee(
   where id=p_id;
 $$;
 grant execute on function admin_update_employee(uuid, text, text, text, text, text, text, text, text, numeric, text, boolean, text, text, boolean, integer[], integer, integer, integer) to anon, authenticated;
+
+-- ============================================================
+-- ส่วนเสริม (ฟีเจอร์รอบ 5): ผู้บริหารลบพนักงานถาวรได้
+-- ============================================================
+-- employees ไม่มี select/delete policy ให้ anon (กัน password รั่ว) → ลบผ่าน RPC เท่านั้น
+-- ลบพนักงานแล้วประวัติที่ผูกไว้ (attendance_logs/deduct_logs/leave_logs/ot_logs/payroll_carry/approvals)
+-- จะถูกลบตามด้วย (on delete cascade ตั้งไว้ตั้งแต่สร้างตาราง)
+create or replace function admin_delete_employee(p_id uuid)
+returns void language sql security definer set search_path = public as $$
+  delete from employees where id = p_id;
+$$;
+grant execute on function admin_delete_employee(uuid) to anon, authenticated;

@@ -58,6 +58,14 @@ export async function savePunch({ employeeId, punchType, lat, lng, distance, bra
   return { ok: true };
 }
 
+// ลบรายการตอกบัตร (attendance_logs มี RLS write ครบ → ลบตรงได้เลย) — ผู้บริหารใช้แก้ข้อมูลผิดพลาด
+export async function deleteAttendanceLog(id) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("attendance_logs").delete().eq("id", id);
+  if (error) { console.error("deleteAttendanceLog:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+
 export async function fetchTodayPunches(employeeId) {
   if (!isSupabaseReady) return null;
   const start = new Date(); start.setHours(0, 0, 0, 0);
@@ -196,11 +204,19 @@ export async function listLeaveLogsForEmployee(employeeId) {
   return data;
 }
 
-// ---------- จัดการพนักงาน (สร้าง/แก้/เปิด-ปิด) ----------
+// ---------- จัดการพนักงาน (สร้าง/แก้/เปิด-ปิด/ลบถาวร) ----------
 export async function createEmployee(emp) {
   if (!isSupabaseReady) return { demo: true };
   const { error } = await supabase.from("employees").insert(emp);
   if (error) { console.error("createEmployee:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+
+// ลบถาวร — ผ่าน RPC (employees ไม่มี select/delete policy) ลบแล้วประวัติที่ผูกไว้หายตามด้วย (cascade)
+export async function adminDeleteEmployee(id) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.rpc("admin_delete_employee", { p_id: id });
+  if (error) { console.error("adminDeleteEmployee:", error.message); return { error: error.message }; }
   return { ok: true };
 }
 

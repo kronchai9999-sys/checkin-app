@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
-import { listEmployees, fetchOrg, fetchPeriodPunches, listDeductionsForEmployee, getCarry, saveCarry } from "./lib/db.js";
+import { listEmployees, fetchOrg, fetchPeriodPunches, listDeductionsForEmployee, getCarry, saveCarry, listWaiversRange } from "./lib/db.js";
 import { isSupabaseReady } from "./lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_ORG, demoPunches, demoDeductions } from "./lib/demo.js";
-import { PERIODS, monthRange, dailyFromPunches, summarizeDays, computePayslip, nextPeriodLabel, baht, round2 } from "./lib/payroll.js";
+import { PERIODS, monthRange, buildCalendar, summarizePayroll, computePayslip, nextPeriodLabel, baht, round2 } from "./lib/payroll.js";
 import { isManager } from "./lib/rules.js";
 import { Page, PageHeader, Card, Select, Field, DemoTag } from "./ui.jsx";
 
@@ -14,6 +14,7 @@ export default function Payslip({ employee }) {
   const [empId, setEmpId] = useState(employee?.id || DEMO_EMPLOYEES[2].id);
   const [logs, setLogs] = useState([]);
   const [deducts, setDeducts] = useState([]);
+  const [waivers, setWaivers] = useState(new Map());
   const [carryIn, setCarryIn] = useState(0);
   const [carryMsg, setCarryMsg] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -34,25 +35,30 @@ export default function Payslip({ employee }) {
     setLoading(true);
     setCarryMsg(null);
     (async () => {
+      const fromDate = `${period.year}-${String(period.month).padStart(2, "0")}-01`;
+      const toDate = `${period.year}-${String(period.month).padStart(2, "0")}-31`;
       if (isSupabaseReady && emp?.id) {
         const { fromISO, toISO } = monthRange(period);
-        const [p, d, cy] = await Promise.all([
+        const [p, d, cy, wv] = await Promise.all([
           fetchPeriodPunches(emp.id, fromISO, toISO),
           listDeductionsForEmployee(emp.id, period.label),
           getCarry(emp.id, period.label),
+          listWaiversRange(fromDate, toDate),
         ]);
-        if (alive) { setLogs(p || []); setDeducts(d || []); setCarryIn(cy || 0); setLoading(false); }
+        if (alive) {
+          setLogs(p || []); setDeducts(d || []); setCarryIn(cy || 0);
+          setWaivers(new Map((wv || []).filter((w) => w.employee_id === emp.id).map((w) => [w.waive_date, w.kind])));
+          setLoading(false);
+        }
       } else {
-        if (alive) { setLogs(demoPunches(emp, period)); setDeducts(demoDeductions(emp.id, period.label)); setCarryIn(0); setLoading(false); }
+        if (alive) { setLogs(demoPunches(emp, period)); setDeducts(demoDeductions(emp.id, period.label)); setCarryIn(0); setWaivers(new Map()); setLoading(false); }
       }
     })();
     return () => { alive = false; };
   }, [viewId, period, emp?.id]);
 
-  const att = useMemo(() => {
-    const s = summarizeDays(dailyFromPunches(logs, shift));
-    return { presentDays: s.presentDays, lateTotal: s.lateTotal, otHours: s.otHours };
-  }, [logs, shift]);
+  const days = useMemo(() => buildCalendar(logs, shift, emp?.off_days, period), [logs, shift, emp?.off_days, period]);
+  const att = useMemo(() => summarizePayroll(days, waivers), [days, waivers]);
   const c = useMemo(() => computePayslip(emp || {}, att, deducts, carryIn), [emp, att, deducts, carryIn]);
 
   const nextP = nextPeriodLabel(period.label);
@@ -119,6 +125,7 @@ export default function Payslip({ employee }) {
                 <Info label="ตำแหน่ง" value={emp?.position} />
                 <Info label="ค่าจ้าง" value={emp?.pay_type === "daily" ? "รายวัน" : "รายเดือน"} />
                 <Info label="มาทำงาน" value={`${att.presentDays} วัน`} />
+                <Info label="ขาดงาน" value={`${att.absentDays} วัน`} />
                 <Info label="OT" value={`${round2(att.otHours)} ชม.`} />
               </div>
 
@@ -133,6 +140,7 @@ export default function Payslip({ employee }) {
                   <div className="mb-1 rounded-t-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white">รายการหัก</div>
                   {c.carryIn > 0 && <Row label="ยอดยกมา (หนี้เก่า)" value={c.carryIn} minus />}
                   {c.dLate > 0 && <Row label={`หักมาสาย (${c.lateInfo.chargeable} น.)`} value={c.dLate} minus />}
+                  {c.dAbsent > 0 && <Row label={`หักขาดงาน (${c.absentDays} วัน)`} value={c.dAbsent} minus />}
                   {c.sso > 0 && <Row label="ประกันสังคม 5%" value={c.sso} minus />}
                   {!c.ssoApplied && <div className="px-3 py-1 text-xs text-slate-400">— ไม่หักประกันสังคม (ตั้งค่ารายคน)</div>}
                   {c.deducts.map((d, i) => <Row key={i} label={`${d.type}${d.created_by_name ? ` · โดย ${d.created_by_name}` : ""}`} value={d.amount} minus />)}

@@ -9,6 +9,7 @@ import Shifts from "./admin/Shifts.jsx";
 import Employees from "./admin/Employees.jsx";
 import Branches from "./admin/Branches.jsx";
 import ShiftTypes from "./admin/ShiftTypes.jsx";
+import AttendanceIssues from "./admin/AttendanceIssues.jsx";
 import { isManager, isExec, ROLE_LABEL } from "./lib/rules.js";
 
 const AUTH_KEY = "hr_authed";
@@ -24,6 +25,7 @@ const TABS = [
   { id: "staff",     label: "พนักงาน",   icon: "👥", Comp: Employees,  exec: true },
   { id: "branches",  label: "สาขา",      icon: "🏢", Comp: Branches,   exec: true },
   { id: "shifttypes",label: "ตั้งเวลากะ", icon: "⏰", Comp: ShiftTypes, exec: true },
+  { id: "issues",    label: "ขาด-สาย",   icon: "🚨", Comp: AttendanceIssues, exec: true },
 ];
 
 const TH = { fontFamily: '"Sarabun","Noto Sans Thai","Prompt",sans-serif' };

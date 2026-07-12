@@ -64,3 +64,15 @@ export const canManageStaff = (role) => isExec(role);
 export const canManageBranches = (role) => isExec(role);
 // จัดการเวลากะ (เพิ่ม/แก้/ลบกะ) = เฉพาะผู้บริหาร
 export const canManageShiftTypes = (role) => isExec(role);
+// ดูรายงานขาด-สาย + กดไม่หักเงิน = เฉพาะผู้บริหาร
+export const canViewAttendanceIssues = (role) => isExec(role);
+
+export const WEEKDAYS = [
+  { v: 0, short: "อา", label: "อาทิตย์" },
+  { v: 1, short: "จ", label: "จันทร์" },
+  { v: 2, short: "อ", label: "อังคาร" },
+  { v: 3, short: "พ", label: "พุธ" },
+  { v: 4, short: "พฤ", label: "พฤหัสบดี" },
+  { v: 5, short: "ศ", label: "ศุกร์" },
+  { v: 6, short: "ส", label: "เสาร์" },
+];

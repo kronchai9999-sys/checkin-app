@@ -12,10 +12,10 @@ export const DEMO_ORG = {
 };
 
 export const DEMO_EMPLOYEES = [
-  { id: "demo-exec", code: "EMP-000", name: "ผู้บริหาร", role: "exec", department: "front", company_id: "bakery", branch_id: "b1", shift_id: "morning", position: "ผู้บริหาร", pay_type: "monthly", base_salary: 30000 },
-  { id: "demo-head", code: "EMP-001", name: "หัวหน้าสาขา", role: "head", department: "front", company_id: "bakery", branch_id: "b1", shift_id: "morning", position: "หัวหน้าสาขา", pay_type: "monthly", base_salary: 18000 },
-  { id: "demo-emp1", code: "EMP-002", name: "สมหญิง ใจดี", role: "employee", department: "front", company_id: "bakery", branch_id: "b1", shift_id: "morning", position: "พนักงานขาย", pay_type: "monthly", base_salary: 13000 },
-  { id: "demo-emp2", code: "EMP-003", name: "ประยุทธ์ ขยันงาน", role: "employee", department: "back", company_id: "bakery", branch_id: "b1", shift_id: "morning", position: "พนักงานครัว", pay_type: "monthly", base_salary: 12000 },
+  { id: "demo-exec", code: "EMP-000", name: "ผู้บริหาร", role: "exec", department: "front", company_id: "bakery", branch_id: "b1", shift_id: "morning", position: "ผู้บริหาร", pay_type: "monthly", base_salary: 30000, off_days: [0] },
+  { id: "demo-head", code: "EMP-001", name: "หัวหน้าสาขา", role: "head", department: "front", company_id: "bakery", branch_id: "b1", shift_id: "morning", position: "หัวหน้าสาขา", pay_type: "monthly", base_salary: 18000, off_days: [0] },
+  { id: "demo-emp1", code: "EMP-002", name: "สมหญิง ใจดี", role: "employee", department: "front", company_id: "bakery", branch_id: "b1", shift_id: "morning", position: "พนักงานขาย", pay_type: "monthly", base_salary: 13000, off_days: [0] },
+  { id: "demo-emp2", code: "EMP-003", name: "ประยุทธ์ ขยันงาน", role: "employee", department: "back", company_id: "bakery", branch_id: "b1", shift_id: "morning", position: "พนักงานครัว", pay_type: "monthly", base_salary: 12000, off_days: [1] },
 ];
 
 // สร้างการตอกบัตรตัวอย่างของพนักงานคนหนึ่งใน 1 งวด (attendance_logs-like)

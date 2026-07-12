@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
-import { listEmployees, fetchOrg, fetchPeriodPunches, createApproval } from "./lib/db.js";
+import { listEmployees, fetchOrg, fetchPeriodPunches, createApproval, listWaiversRange } from "./lib/db.js";
 import { isSupabaseReady } from "./lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_ORG, demoPunches } from "./lib/demo.js";
-import { PERIODS, monthRange, dailyFromPunches, summarizeDays, baht, round2 } from "./lib/payroll.js";
+import { PERIODS, monthRange, buildCalendar, summarizePayroll, baht, round2 } from "./lib/payroll.js";
 import { RULES, isManager } from "./lib/rules.js";
 import { Page, PageHeader, Card, Stat, Select, Field, inputCls, DemoTag } from "./ui.jsx";
 
@@ -20,6 +20,7 @@ export default function Timesheet({ employee }) {
   const [period, setPeriod] = useState(PERIODS[0]);
   const [empId, setEmpId] = useState(employee?.id || DEMO_EMPLOYEES[2].id);
   const [logs, setLogs] = useState([]);
+  const [waivers, setWaivers] = useState(new Map());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -36,19 +37,28 @@ export default function Timesheet({ employee }) {
     let alive = true;
     setLoading(true);
     (async () => {
+      const fromDate = `${period.year}-${String(period.month).padStart(2, "0")}-01`;
+      const toDate = `${period.year}-${String(period.month).padStart(2, "0")}-31`;
       if (isSupabaseReady && emp?.id) {
         const { fromISO, toISO } = monthRange(period);
-        const data = await fetchPeriodPunches(emp.id, fromISO, toISO);
-        if (alive) { setLogs(data || []); setLoading(false); }
+        const [data, wv] = await Promise.all([
+          fetchPeriodPunches(emp.id, fromISO, toISO),
+          listWaiversRange(fromDate, toDate),
+        ]);
+        if (alive) {
+          setLogs(data || []);
+          setWaivers(new Map((wv || []).filter((w) => w.employee_id === emp.id).map((w) => [w.waive_date, w.kind])));
+          setLoading(false);
+        }
       } else {
-        if (alive) { setLogs(demoPunches(emp, period)); setLoading(false); }
+        if (alive) { setLogs(demoPunches(emp, period)); setWaivers(new Map()); setLoading(false); }
       }
     })();
     return () => { alive = false; };
   }, [viewId, period, emp?.id]);
 
-  const days = useMemo(() => dailyFromPunches(logs, shift), [logs, shift]);
-  const t = useMemo(() => summarizeDays(days), [days]);
+  const days = useMemo(() => buildCalendar(logs, shift, emp?.off_days, period), [logs, shift, emp?.off_days, period]);
+  const t = useMemo(() => summarizePayroll(days, waivers), [days, waivers]);
 
   // ยื่นคำขอ → เข้าคิวอนุมัติ
   const [reqType, setReqType] = useState(REQ_TYPES[0].id);
@@ -102,31 +112,42 @@ export default function Timesheet({ employee }) {
                 <th className="px-2 py-2.5">เลิก</th>
                 <th className="px-2 py-2.5">สาย</th>
                 <th className="px-2 py-2.5">OT</th>
+                <th className="px-2 py-2.5">สถานะ</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="py-8 text-center text-slate-400">กำลังโหลด…</td></tr>
+                <tr><td colSpan={8} className="py-8 text-center text-slate-400">กำลังโหลด…</td></tr>
               ) : days.length === 0 ? (
-                <tr><td colSpan={7} className="py-8 text-center text-slate-400">ยังไม่มีข้อมูลตอกบัตรงวดนี้</td></tr>
-              ) : days.map((d, i) => (
-                <tr key={i} className="border-b border-slate-50">
-                  <td className="px-3 py-2 font-medium text-slate-700">{d.dateLabel}</td>
-                  <td className="px-2 py-2 text-center tabular-nums text-slate-600">{d.in}</td>
-                  <td className="px-2 py-2 text-center tabular-nums text-slate-400">{d.lunchOut}</td>
-                  <td className="px-2 py-2 text-center tabular-nums text-slate-400">{d.lunchIn}</td>
-                  <td className="px-2 py-2 text-center tabular-nums text-slate-600">{d.out}</td>
-                  <td className={`px-2 py-2 text-center tabular-nums ${d.lateMin > 0 ? "font-semibold text-rose-600" : "text-slate-300"}`}>{d.lateMin > 0 ? `${d.lateMin}′` : "-"}</td>
-                  <td className={`px-2 py-2 text-center tabular-nums ${d.otMin > 0 ? "font-semibold text-amber-600" : "text-slate-300"}`}>{d.otMin > 0 ? `${round2(d.otMin / 60)}ช` : "-"}</td>
-                </tr>
-              ))}
+                <tr><td colSpan={8} className="py-8 text-center text-slate-400">ยังไม่มีข้อมูลตอกบัตรงวดนี้</td></tr>
+              ) : days.map((d, i) => {
+                const waived = waivers.get(d.dateKey);
+                return (
+                  <tr key={i} className={`border-b border-slate-50 ${d.isOff ? "bg-slate-50/60" : d.absent ? "bg-rose-50/40" : ""}`}>
+                    <td className="px-3 py-2 font-medium text-slate-700">{d.dateLabel}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-slate-600">{d.in}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-slate-400">{d.lunchOut}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-slate-400">{d.lunchIn}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-slate-600">{d.out}</td>
+                    <td className={`px-2 py-2 text-center tabular-nums ${d.lateMin > 0 ? "font-semibold text-rose-600" : "text-slate-300"}`}>{d.lateMin > 0 ? `${d.lateMin}′` : "-"}</td>
+                    <td className={`px-2 py-2 text-center tabular-nums ${d.otMin > 0 ? "font-semibold text-amber-600" : "text-slate-300"}`}>{d.otMin > 0 ? `${round2(d.otMin / 60)}ช` : "-"}</td>
+                    <td className="px-2 py-2 text-center text-xs">
+                      {d.isOff ? <span className="text-slate-400">หยุดประจำสัปดาห์</span>
+                        : d.absent ? <span className="font-semibold text-rose-600">ขาด{waived ? " · ไม่หัก" : ""}</span>
+                        : waived && d.lateMin > 0 ? <span className="text-emerald-600">ไม่หักสาย</span>
+                        : null}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </Card>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Stat label="วันมาทำงาน" value={`${t.presentDays} วัน`} />
+        <Stat label="ขาดงาน" value={`${t.absentDays} วัน`} tone={t.absentDays > 0 ? "rose" : "slate"} />
         <Stat label="สายสะสม" value={`${t.lateTotal} น.`} tone={t.lateTotal > RULES.lateGraceMinutesPerMonth ? "rose" : "slate"} />
         <Stat label="OT รวม" value={`${round2(t.otHours)} ชม.`} tone="amber" />
         <Stat label="เงิน OT" value={`${baht(t.otPay)}`} tone="amber" />

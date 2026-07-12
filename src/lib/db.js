@@ -164,8 +164,32 @@ export async function updateEmployee(id, patch) {
     p_username: patch.username ?? null,
     p_password: patch.password ?? null,
     p_sso: patch.sso ?? null,
+    p_off_days: patch.off_days ?? null,
   });
   if (error) { console.error("updateEmployee:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+
+// ---------- ยกเว้นไม่หักเงิน (สาย/ขาด รายวัน) ----------
+export async function listWaiversRange(fromDate, toDate) {
+  if (!isSupabaseReady) return [];
+  const { data, error } = await supabase.from("attendance_waivers").select("*").gte("waive_date", fromDate).lte("waive_date", toDate);
+  if (error) { console.error("listWaiversRange:", error.message); return []; }
+  return data;
+}
+export async function setWaiver({ employeeId, dateKey, kind, createdBy, createdByName }) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("attendance_waivers").upsert(
+    { employee_id: employeeId, waive_date: dateKey, kind, created_by: createdBy, created_by_name: createdByName },
+    { onConflict: "employee_id,waive_date" }
+  );
+  if (error) { console.error("setWaiver:", error.message); return { error: error.message }; }
+  return { ok: true };
+}
+export async function removeWaiver(employeeId, dateKey) {
+  if (!isSupabaseReady) return { demo: true };
+  const { error } = await supabase.from("attendance_waivers").delete().eq("employee_id", employeeId).eq("waive_date", dateKey);
+  if (error) { console.error("removeWaiver:", error.message); return { error: error.message }; }
   return { ok: true };
 }
 

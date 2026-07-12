@@ -2,8 +2,28 @@ import { useState, useEffect } from "react";
 import { listEmployees, fetchOrg, createEmployee, updateEmployee } from "../lib/db.js";
 import { isSupabaseReady } from "../lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_ORG } from "../lib/demo.js";
-import { canManageStaff, ROLE_LABEL } from "../lib/rules.js";
+import { canManageStaff, ROLE_LABEL, WEEKDAYS } from "../lib/rules.js";
 import { Page, PageHeader, Card, Select, Field, inputCls, Badge, Empty, DemoTag } from "../ui.jsx";
+
+function WeekdayPicker({ value, onChange }) {
+  const set = new Set(value || []);
+  function toggle(v) {
+    const next = new Set(set);
+    next.has(v) ? next.delete(v) : next.add(v);
+    onChange([...next].sort());
+  }
+  return (
+    <div className="mt-1 flex flex-wrap gap-1.5">
+      {WEEKDAYS.map((d) => (
+        <button key={d.v} type="button" onClick={() => toggle(d.v)}
+          className={`h-8 w-8 rounded-full text-xs font-semibold transition ${set.has(d.v) ? "bg-rose-500 text-white" : "bg-slate-100 text-slate-500"}`}
+          title={`หยุดวัน${d.label}`}>
+          {d.short}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const ROLES = [
   { v: "employee", l: "พนักงาน" },
@@ -19,7 +39,7 @@ const blank = (branch, shift) => ({
   code: "", name: "", username: "", password: "",
   role: "employee", department: "front",
   branch_id: branch || "", shift_id: shift || "",
-  position: "", pay_type: "monthly", base_salary: "", start_date: "", sso: true,
+  position: "", pay_type: "monthly", base_salary: "", start_date: "", sso: true, off_days: [0],
 });
 
 export default function Employees({ employee }) {
@@ -66,7 +86,7 @@ export default function Employees({ employee }) {
       branch_id: form.branch_id, shift_id: form.shift_id,
       position: form.position.trim() || null,
       pay_type: form.pay_type, base_salary: Number(form.base_salary) || 0,
-      start_date: form.start_date.trim() || null, sso: form.sso,
+      start_date: form.start_date.trim() || null, sso: form.sso, off_days: form.off_days,
     };
     const res = await createEmployee(payload);
     setBusy(false);
@@ -95,7 +115,7 @@ export default function Employees({ employee }) {
       branch_id: emp.branch_id || org.branches[0]?.id, shift_id: emp.shift_id || org.shifts[0]?.id,
       position: emp.position || "", pay_type: emp.pay_type || "monthly",
       base_salary: emp.base_salary ?? "", start_date: emp.start_date || "",
-      sso: emp.sso !== false,
+      sso: emp.sso !== false, off_days: emp.off_days || [0],
       username: "", password: "",  // เว้นว่าง = ไม่เปลี่ยน
     });
     setEditing(emp);
@@ -114,7 +134,7 @@ export default function Employees({ employee }) {
       branch_id: ef.branch_id, shift_id: ef.shift_id,
       position: ef.position.trim() || null, pay_type: ef.pay_type,
       base_salary: Number(ef.base_salary) || 0, start_date: ef.start_date.trim() || null,
-      sso: ef.sso,
+      sso: ef.sso, off_days: ef.off_days,
     };
     if (ef.username.trim()) patch.username = ef.username.trim();
     if (ef.password) patch.password = ef.password;
@@ -155,6 +175,10 @@ export default function Employees({ employee }) {
               <span>{form.sso ? "หัก สปส. 5%" : "ไม่หัก สปส."}</span>
             </label>
           </Field>
+          <div className="col-span-2 sm:col-span-3">
+            <span className="mb-1 block text-xs font-medium text-slate-500">วันหยุดประจำสัปดาห์</span>
+            <WeekdayPicker value={form.off_days} onChange={(v) => set("off_days", v)} />
+          </div>
           <div className="col-span-2 sm:col-span-3">
             {msg && <p className={`mb-2 text-sm ${msg.ok ? "text-emerald-600" : "text-rose-500"}`}>{msg.text}</p>}
             <button type="submit" disabled={busy} className={`w-full rounded-xl py-3 text-sm font-semibold text-white ${busy ? "bg-slate-300" : "bg-emerald-600 active:bg-emerald-700"}`}>
@@ -212,6 +236,10 @@ export default function Employees({ employee }) {
                   <span>{ef.sso ? "หัก สปส. 5%" : "ไม่หัก สปส."}</span>
                 </label>
               </Field>
+              <div className="col-span-2">
+                <span className="mb-1 block text-xs font-medium text-slate-500">วันหยุดประจำสัปดาห์</span>
+                <WeekdayPicker value={ef.off_days} onChange={(v) => setE("off_days", v)} />
+              </div>
               <div className="col-span-2 my-1 border-t border-slate-100 pt-2 text-xs font-medium text-slate-400">เปลี่ยนล็อกอิน (เว้นว่าง = คงเดิม)</div>
               <Field label="Username ใหม่"><input className={inputCls} value={ef.username} onChange={(e) => setE("username", e.target.value)} autoCapitalize="none" placeholder="เว้นว่าง = ไม่เปลี่ยน" /></Field>
               <Field label="รหัสผ่านใหม่"><input className={inputCls} value={ef.password} onChange={(e) => setE("password", e.target.value)} placeholder="เว้นว่าง = ไม่เปลี่ยน" /></Field>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { listEmployees, fetchOrg, fetchPeriodPunches, createApproval, listWaiversRange, listLeaveLogsForEmployee, getManualOtMinutes, applyTimeEdit, deleteAttendanceLog, listApprovalsForEmployee, fetchDayPunchesAllEmployees } from "./lib/db.js";
+import { listEmployees, fetchOrg, fetchPeriodPunches, createApproval, listWaiversRange, listLeaveLogsForEmployee, getManualOtMinutes, applyTimeEdit, deleteAttendanceLog, listApprovalsForEmployee, fetchDayPunchesAllEmployees, listDeductionsForDay } from "./lib/db.js";
 import { isSupabaseReady } from "./lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_ORG, demoPunches } from "./lib/demo.js";
 import { PERIODS, monthRange, buildCalendar, summarizePayroll, applyManualOt, currentPeriod, baht, round2, buildDaySummary } from "./lib/payroll.js";
@@ -112,7 +112,12 @@ export default function Timesheet({ employee }) {
     (async () => {
       const dayStart = new Date(dayDate); dayStart.setHours(0, 0, 0, 0);
       const dayEnd = new Date(dayDate); dayEnd.setHours(23, 59, 59, 999);
-      const logsAll = isSupabaseReady ? await fetchDayPunchesAllEmployees(dayStart.toISOString(), dayEnd.toISOString()) : [];
+      const [logsAll, deductsAll] = isSupabaseReady
+        ? await Promise.all([
+            fetchDayPunchesAllEmployees(dayStart.toISOString(), dayEnd.toISOString()),
+            listDeductionsForDay(dayStart.toISOString(), dayEnd.toISOString()),
+          ])
+        : [[], []];
       const dow = new Date(dayDate).getDay();
       const rows = emps
         .filter((e) => e.active !== false)
@@ -121,7 +126,12 @@ export default function Timesheet({ employee }) {
           const empLogs = (logsAll || []).filter((l) => l.employee_id === e.id);
           const sum = buildDaySummary(empLogs, empShift);
           const isOff = (e.off_days || []).includes(dow);
-          return { emp: e, ...sum, isOff, absent: !isOff && !sum.present };
+          const empDeducts = (deductsAll || []).filter((d) => d.employee_id === e.id);
+          const sumBy = (pred) => empDeducts.filter(pred).reduce((s, d) => s + Number(d.amount || 0), 0);
+          const advance = sumBy((d) => d.type === "เบิกล่วงหน้า");
+          const shortage = sumBy((d) => d.type === "เงินขาด (แคชเชียร์)");
+          const deduct = sumBy((d) => d.type !== "เบิกล่วงหน้า" && d.type !== "เงินขาด (แคชเชียร์)");
+          return { emp: e, ...sum, isOff, absent: !isOff && !sum.present, advance, shortage, deduct };
         });
       if (alive) { setDayRows(rows); setDayLoading(false); }
     })();
@@ -245,7 +255,7 @@ export default function Timesheet({ employee }) {
             <Field label="วันที่"><input type="date" className={inputCls} value={dayDate} onChange={(e) => setDayDate(e.target.value)} /></Field>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm">
+            <table className="w-full min-w-[820px] text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
                   <th className="px-3 py-2.5 text-left">พนักงาน</th>
@@ -255,14 +265,17 @@ export default function Timesheet({ employee }) {
                   <th className="px-2 py-2.5">เลิก</th>
                   <th className="px-2 py-2.5">สาย</th>
                   <th className="px-2 py-2.5">OT</th>
+                  <th className="px-2 py-2.5">เบิก</th>
+                  <th className="px-2 py-2.5">ขาด</th>
+                  <th className="px-2 py-2.5">หัก</th>
                   <th className="px-2 py-2.5">สถานะ</th>
                 </tr>
               </thead>
               <tbody>
                 {dayLoading ? (
-                  <tr><td colSpan={8} className="py-8 text-center text-slate-400">กำลังโหลด…</td></tr>
+                  <tr><td colSpan={11} className="py-8 text-center text-slate-400">กำลังโหลด…</td></tr>
                 ) : dayRows.length === 0 ? (
-                  <tr><td colSpan={8} className="py-8 text-center text-slate-400">ไม่มีพนักงาน</td></tr>
+                  <tr><td colSpan={11} className="py-8 text-center text-slate-400">ไม่มีพนักงาน</td></tr>
                 ) : dayRows.map((r) => (
                   <tr key={r.emp.id} className={`border-b border-slate-50 ${r.isOff ? "bg-slate-50/60" : r.absent ? "bg-rose-50/40" : ""}`}>
                     <td className="px-3 py-2 font-medium text-slate-700">{r.emp.name}</td>
@@ -272,6 +285,9 @@ export default function Timesheet({ employee }) {
                     <td className="px-2 py-2 text-center tabular-nums text-slate-600">{r.out}</td>
                     <td className={`px-2 py-2 text-center tabular-nums ${r.lateMin > 0 ? "font-semibold text-rose-600" : "text-slate-300"}`}>{r.lateMin > 0 ? `${r.lateMin}′` : "-"}</td>
                     <td className={`px-2 py-2 text-center tabular-nums ${r.otMin > 0 ? "font-semibold text-amber-600" : "text-slate-300"}`}>{r.otMin > 0 ? `${round2(r.otMin / 60)}ช` : "-"}</td>
+                    <td className={`px-2 py-2 text-center tabular-nums ${r.advance > 0 ? "font-semibold text-sky-600" : "text-slate-300"}`}>{r.advance > 0 ? baht(r.advance) : "-"}</td>
+                    <td className={`px-2 py-2 text-center tabular-nums ${r.shortage > 0 ? "font-semibold text-rose-600" : "text-slate-300"}`}>{r.shortage > 0 ? baht(r.shortage) : "-"}</td>
+                    <td className={`px-2 py-2 text-center tabular-nums ${r.deduct > 0 ? "font-semibold text-rose-600" : "text-slate-300"}`}>{r.deduct > 0 ? baht(r.deduct) : "-"}</td>
                     <td className="px-2 py-2 text-center text-xs">
                       {r.isOff ? <span className="text-slate-400">หยุดประจำสัปดาห์</span>
                         : r.absent ? <span className="font-semibold text-rose-600">ขาด</span>

@@ -118,6 +118,16 @@ export async function listDeductions(period) {
   return data;
 }
 
+// รายการหักเงิน "ทุกคน" ในวันเดียว (อิงจากวันที่บันทึก) — ใช้กับมุมมองผู้บริหาร "ทุกคน (ต่อวัน)"
+export async function listDeductionsForDay(fromISO, toISO) {
+  if (!isSupabaseReady) return [];
+  const { data, error } = await supabase
+    .from("deduct_logs").select("*")
+    .gte("created_at", fromISO).lte("created_at", toISO);
+  if (error) { console.error("listDeductionsForDay:", error.message); return []; }
+  return data;
+}
+
 export async function listDeductionsForEmployee(employeeId, period) {
   if (!isSupabaseReady) return null;
   let q = supabase.from("deduct_logs").select("*").eq("employee_id", employeeId);

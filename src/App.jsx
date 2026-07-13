@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { listEmployees } from "./lib/db.js";
 import Login from "./Login.jsx";
 import CheckIn from "./CheckIn.jsx";
 import Timesheet from "./Timesheet.jsx";
@@ -49,6 +50,25 @@ export default function App() {
     setAuthed(false);
     setTab("checkin");
   }
+
+  // ข้อมูลพนักงาน (แผนก/กะ/สิทธิ์) อาจถูกแก้จากหลังบ้านระหว่างที่ล็อกอินค้างอยู่
+  // ดึงข้อมูลตัวเองใหม่ตอนเปิดแอป + ทุก 5 นาที กันข้อมูลค้าง (เช่น แผนกเปลี่ยนแต่ต้องออกจากระบบก่อนถึงจะเห็น)
+  useEffect(() => {
+    if (!authed || !employee?.id) return;
+    let alive = true;
+    async function refresh() {
+      const list = await listEmployees();
+      if (!alive || !list) return;
+      const fresh = list.find((e) => e.id === employee.id);
+      if (fresh && JSON.stringify(fresh) !== JSON.stringify(employee)) {
+        setEmployee(fresh);
+        sessionStorage.setItem(EMP_KEY, JSON.stringify(fresh));
+      }
+    }
+    refresh();
+    const t = setInterval(refresh, 5 * 60 * 1000);
+    return () => { alive = false; clearInterval(t); };
+  }, [authed, employee?.id]);
 
   if (!authed) return <Login onSuccess={login} />;
 

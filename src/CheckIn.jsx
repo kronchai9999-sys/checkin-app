@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
 import { fetchCompanies, savePunch, fetchTodayPunches } from "./lib/db.js";
-import { isBackOffice } from "./lib/rules.js";
 import { enqueuePunch, flushQueue, getQueue } from "./lib/offline.js";
 
 /**
@@ -33,13 +32,8 @@ const COMPANIES = [
 // ล็อกกะจากระบบหลังบ้าน: true = พนักงานเปลี่ยนกะเองไม่ได้ (กะถูกกำหนดมาจากแอดมิน)
 const LOCK_SHIFT = true;
 
-// ลำดับการเช็ค — หน้าร้าน: เข้า/เลิก (2 ครั้ง)
-const FRONT_PUNCHES = [
-  { key: "in", label: "เช็คอินเข้างาน", short: "เข้างาน", compare: "in" },
-  { key: "out", label: "เช็คเอาเลิกงาน", short: "เลิกงาน", compare: "out" },
-];
-// หลังร้าน: เข้า / พักเที่ยงออก / พักเที่ยงเข้า / เลิก (พักเที่ยงไม่ต้องจับ GPS — req 5)
-const BACK_PUNCHES = [
+// ลำดับการเช็ค — ทุกคนเหมือนกันหมด: เข้า / พักเที่ยงออก / พักเที่ยงเข้า / เลิก (พักเที่ยงไม่ต้องจับ GPS — req 5)
+const PUNCH_STEPS = [
   { key: "in", label: "เช็คอินเข้างาน", short: "เข้างาน", compare: "in" },
   { key: "lunch_out", label: "สแกนพักเที่ยง (ออก)", short: "พักออก", compare: null, noGps: true },
   { key: "lunch_in", label: "สแกนพักเที่ยง (เข้า)", short: "พักเข้า", compare: null, noGps: true },
@@ -95,9 +89,7 @@ export default function CheckIn({ employee }) {
   const branch = company.branches.find((b) => b.id === branchId) || company.branches[0];
   const shift = company.shifts.find((s) => s.id === shiftId) || company.shifts[0];
 
-  // หลังร้าน = สแกนพักเที่ยงด้วย (4 ครั้ง) · หน้าร้าน = เข้า/เลิก (2 ครั้ง)
-  const backOffice = isBackOffice(employee);
-  const PUNCHES = backOffice ? BACK_PUNCHES : FRONT_PUNCHES;
+  const PUNCHES = PUNCH_STEPS;
 
   const [now, setNow] = useState(new Date());
   const [done, setDone] = useState([]);            // records ที่เช็คแล้ววันนี้ [in, out]

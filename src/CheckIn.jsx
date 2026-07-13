@@ -99,6 +99,7 @@ export default function CheckIn({ employee }) {
   const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [queueCount, setQueueCount] = useState(getQueue().length);
   const [syncMsg, setSyncMsg] = useState(null);
+  const [justPunched, setJustPunched] = useState(null);   // ล็อกปุ่มสั้นๆ หลังกดกันแตะซ้อน
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -162,9 +163,11 @@ export default function CheckIn({ employee }) {
     return () => { alive = false; };
   }, [employee, shift]);
 
-  const idx = done.length;                         // ครั้งต่อไป (0=เข้า, 1=เลิก)
-  const current = PUNCHES[idx] || null;
-  const dayComplete = idx >= PUNCHES.length;
+  // หาขั้นต่อไปจาก "ประเภทที่ยังไม่มี" ไม่ใช่นับจำนวนครั้ง — กันพังถ้ามีข้อมูลเก่าผิดประเภทปนอยู่
+  // (เช่น เคยกดพักเที่ยงแล้วดันถูกบันทึกเป็น "เลิกงาน" ก่อนแก้บั๊ก — นับจำนวนอย่างเดียวจะข้ามขั้นไปผิด)
+  const doneKeys = new Set(done.map((d) => d.key));
+  const current = PUNCHES.find((s) => !doneKeys.has(s.key)) || null;
+  const dayComplete = !current;
 
   const distance = useMemo(
     () => (coords ? distanceMeters(coords, branch) : null),
@@ -200,7 +203,7 @@ export default function CheckIn({ employee }) {
   }
 
   async function doPunch() {
-    if (!ready) return;
+    if (!ready || justPunched) return;
     const t = new Date();
     const punch = current;
     const at = skipGps ? null : coords;    // ออฟไลน์/พักเที่ยง = ไม่เก็บพิกัด
@@ -217,6 +220,9 @@ export default function CheckIn({ employee }) {
     };
     setDone([...done, rec]);
     setCoords(null); setGpsError(null);   // เคลียร์ GPS ให้เช็คใหม่ครั้งถัดไป
+    // ล็อกปุ่มไว้สั้นๆ กันแตะรัวซ้อนไปโดนขั้นถัดไปโดยไม่ตั้งใจ (เช่น กดพักเที่ยงเข้าเสร็จ แล้วมือไวกดโดนเลิกงานทันที)
+    setJustPunched(rec);
+    setTimeout(() => setJustPunched(null), 2500);
     if (employee?.id) {
       const payload = { employeeId: employee.id, punchType: punch.key, lat: at?.lat, lng: at?.lng, distance: dist, branchId: branch.id, ts: t.toISOString() };
       if (!online) {
@@ -350,22 +356,33 @@ export default function CheckIn({ employee }) {
               )}
               {gpsError && <p className="mb-3 text-center text-xs text-rose-500">{gpsError}</p>}
 
-              {/* ปุ่มวงกลมใหญ่ */}
-              <button onClick={doPunch} disabled={!ready}
-                className={`mx-auto flex aspect-square w-56 flex-col items-center justify-center rounded-full text-center transition ${
-                  ready
-                    ? isOut
-                      ? "bg-sky-500 text-white shadow-xl shadow-sky-200 active:scale-95"
-                      : "bg-emerald-500 text-white shadow-xl shadow-emerald-200 active:scale-95"
-                    : "cursor-not-allowed bg-slate-100 text-slate-400"
-                }`}>
-                <span className="text-4xl">{isOut ? "🏁" : "➜]"}</span>
-                <span className="mt-2 text-xl font-bold">{current.label}</span>
-              </button>
+              {justPunched ? (
+                /* ล็อกไว้สั้นๆ กันแตะรัวโดนขั้นถัดไปโดยไม่ตั้งใจ (เช่น กดพักเที่ยงเข้าเสร็จแล้วมือไวกดโดนเลิกงาน) */
+                <div className="mx-auto flex aspect-square w-56 flex-col items-center justify-center rounded-full bg-emerald-50 text-center">
+                  <span className="text-4xl">✓</span>
+                  <span className="mt-2 text-lg font-bold text-emerald-700">บันทึก{justPunched.label}แล้ว</span>
+                  <span className="text-sm text-emerald-600">{justPunched.timeStr} น.</span>
+                </div>
+              ) : (
+                <>
+                  {/* ปุ่มวงกลมใหญ่ */}
+                  <button onClick={doPunch} disabled={!ready}
+                    className={`mx-auto flex aspect-square w-56 flex-col items-center justify-center rounded-full text-center transition ${
+                      ready
+                        ? isOut
+                          ? "bg-sky-500 text-white shadow-xl shadow-sky-200 active:scale-95"
+                          : "bg-emerald-500 text-white shadow-xl shadow-emerald-200 active:scale-95"
+                        : "cursor-not-allowed bg-slate-100 text-slate-400"
+                    }`}>
+                    <span className="text-4xl">{isOut ? "🏁" : "➜]"}</span>
+                    <span className="mt-2 text-xl font-bold">{current.label}</span>
+                  </button>
 
-              <p className="mt-4 text-center text-sm text-slate-400">
-                {ready ? "แตะปุ่มเพื่อบันทึกเวลา" : skipGps ? "แตะปุ่มเพื่อบันทึกเวลา" : "กด \"ตรวจ GPS\" ให้อยู่ในพื้นที่ร้านก่อน"}
-              </p>
+                  <p className="mt-4 text-center text-sm text-slate-400">
+                    {ready ? "แตะปุ่มเพื่อบันทึกเวลา" : skipGps ? "แตะปุ่มเพื่อบันทึกเวลา" : "กด \"ตรวจ GPS\" ให้อยู่ในพื้นที่ร้านก่อน"}
+                  </p>
+                </>
+              )}
             </>
           )}
         </div>

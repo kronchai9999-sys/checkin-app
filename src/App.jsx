@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { listEmployees } from "./lib/db.js";
 import Login from "./Login.jsx";
 import CheckIn from "./CheckIn.jsx";
 import Timesheet from "./Timesheet.jsx";
+import OT from "./OT.jsx";
 import Payslip from "./Payslip.jsx";
 import Approvals from "./admin/Approvals.jsx";
 import Deductions from "./admin/Deductions.jsx";
@@ -19,6 +20,7 @@ const EMP_KEY = "hr_emp";
 const TABS = [
   { id: "checkin",   label: "เช็คอิน",   icon: "🕐", Comp: CheckIn },
   { id: "timesheet", label: "ตารางเวลา", icon: "🗓️", Comp: Timesheet },
+  { id: "ot",        label: "โอที",      icon: "⏱️", Comp: OT },
   { id: "payslip",   label: "สลิป",      icon: "🧾", Comp: Payslip },
   { id: "approve",   label: "อนุมัติ",   icon: "✅", Comp: Approvals,  manager: true },
   { id: "staff",     label: "พนักงาน",   icon: "👥", Comp: Employees,  exec: true },
@@ -37,6 +39,27 @@ export default function App() {
     try { return JSON.parse(sessionStorage.getItem(EMP_KEY)); } catch { return null; }
   });
   const [tab, setTab] = useState("checkin");
+  const navRef = useRef(null);
+  const dragRef = useRef({ down: false, startX: 0, scrollLeft: 0, moved: false });
+
+  function navPointerDown(e) {
+    const el = navRef.current;
+    dragRef.current = { down: true, startX: e.clientX, scrollLeft: el.scrollLeft, moved: false };
+  }
+  function navPointerMove(e) {
+    const d = dragRef.current;
+    if (!d.down) return;
+    const dx = e.clientX - d.startX;
+    if (Math.abs(dx) > 4) d.moved = true;
+    navRef.current.scrollLeft = d.scrollLeft - dx;
+  }
+  function navPointerUp() {
+    dragRef.current.down = false;
+  }
+  function selectTab(id) {
+    if (dragRef.current.moved) { dragRef.current.moved = false; return; }   // กันคลิกโดนหลังลากเลื่อน
+    setTab(id);
+  }
 
   function login(emp) {
     sessionStorage.setItem(AUTH_KEY, "1");
@@ -98,11 +121,14 @@ export default function App() {
 
       {/* ===== แท็บเมนู (เลื่อนแนวนอน) ===== */}
       <div className="border-b border-amber-100 bg-white/70 backdrop-blur">
-        <nav className="mx-auto flex max-w-5xl gap-2 overflow-x-auto px-4 py-3 sm:px-6">
+        <nav ref={navRef}
+          onPointerDown={navPointerDown} onPointerMove={navPointerMove}
+          onPointerUp={navPointerUp} onPointerLeave={navPointerUp}
+          className="mx-auto flex max-w-5xl cursor-grab select-none gap-2 overflow-x-auto px-4 py-3 active:cursor-grabbing sm:px-6">
           {tabs.map((t) => {
             const active = t.id === tab;
             return (
-              <button key={t.id} onClick={() => setTab(t.id)}
+              <button key={t.id} onClick={() => selectTab(t.id)}
                 className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition ${
                   active ? "bg-pink-700 text-white shadow" : "bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-pink-50"
                 }`}>

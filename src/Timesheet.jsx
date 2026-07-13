@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { listEmployees, fetchOrg, fetchPeriodPunches, createApproval, listWaiversRange, listLeaveLogsForEmployee, getManualOtMinutes, applyTimeEdit, deleteAttendanceLog, listApprovalsForEmployee, fetchDayPunchesAllEmployees, listDeductionsForDay } from "./lib/db.js";
 import { isSupabaseReady } from "./lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_ORG, demoPunches } from "./lib/demo.js";
-import { PERIODS, monthRange, buildCalendar, summarizePayroll, applyManualOt, currentPeriod, baht, round2, buildDaySummary } from "./lib/payroll.js";
+import { PERIODS, monthRange, buildCalendar, summarizePayroll, applyManualOt, currentPeriod, baht, round2, buildDaySummary, otRateFor } from "./lib/payroll.js";
 import { RULES, isManager, isExec, REQUEST_TYPE_LABEL } from "./lib/rules.js";
 import { Page, PageHeader, Card, Stat, Select, Field, inputCls, DemoTag } from "./ui.jsx";
 
@@ -10,7 +10,6 @@ const REQ_TYPES = [
   { id: "leave", label: "ขอลา" },
   { id: "shift_change", label: "ขอเปลี่ยนกะ" },
   { id: "time_edit", label: "ขอแก้เวลาทำงาน" },
-  { id: "ot_edit", label: "ขอแก้ OT" },
 ];
 const LEAVE_TYPES = [
   { v: "sick", l: "ลาป่วย" },
@@ -139,7 +138,7 @@ export default function Timesheet({ employee }) {
   }, [execView, viewMode, dayDate, emps, shifts]);
 
   const days = useMemo(() => buildCalendar(logs, shift, emp?.off_days, period), [logs, shift, emp?.off_days, period]);
-  const t = useMemo(() => applyManualOt(summarizePayroll(days, waivers), manualOtMin), [days, waivers, manualOtMin]);
+  const t = useMemo(() => applyManualOt(summarizePayroll(days, waivers, otRateFor(emp)), manualOtMin, otRateFor(emp)), [days, waivers, manualOtMin, emp]);
 
   // ล็อกอัพ dateKey+ประเภท → id ของแถวจริงใน attendance_logs (สำหรับผู้บริหารแก้/ลบตรง)
   const punchIndex = useMemo(() => {
@@ -187,7 +186,6 @@ export default function Timesheet({ employee }) {
   const [reqDays, setReqDays] = useState(1);
   const [reqPunchType, setReqPunchType] = useState(PUNCH_TYPES[0].v);
   const [reqNewTime, setReqNewTime] = useState("");
-  const [reqOtMinutes, setReqOtMinutes] = useState("");
   const [reqShiftId, setReqShiftId] = useState("");
   const [reqMsg, setReqMsg] = useState(null);
   const [reqBusy, setReqBusy] = useState(false);
@@ -208,10 +206,6 @@ export default function Timesheet({ employee }) {
       const punchLabel = PUNCH_TYPES.find((p) => p.v === reqPunchType)?.l;
       detail = `ขอแก้เวลา${punchLabel} วันที่ ${reqDate} เป็น ${reqNewTime}${note ? " · " + note : ""}`;
       payload = { date: reqDate, punchType: reqPunchType, newTime: reqNewTime };
-    } else if (reqType === "ot_edit") {
-      if (!reqDate || !reqOtMinutes) { setReqMsg({ ok: false, text: "เลือกวันที่และจำนวนนาที OT" }); return; }
-      detail = `ขอ OT วันที่ ${reqDate} จำนวน ${reqOtMinutes} นาที${note ? " · " + note : ""}`;
-      payload = { date: reqDate, minutes: Number(reqOtMinutes) };
     } else if (reqType === "shift_change") {
       if (!reqShiftId) { setReqMsg({ ok: false, text: "เลือกกะที่ต้องการเปลี่ยนไป" }); return; }
       const shiftName = shifts.find((s) => s.id === reqShiftId)?.name;
@@ -225,8 +219,8 @@ export default function Timesheet({ employee }) {
     const res = await createApproval({ requestType: reqType, employeeId: employee?.id, detail, payload });
     setReqBusy(false);
     if (res?.error) { setReqMsg({ ok: false, text: "ส่งไม่สำเร็จ: " + res.error }); return; }
-    setReqMsg({ ok: true, text: `ส่งคำขอแล้ว — รอ${reqType === "time_edit" || reqType === "ot_edit" ? "ผู้บริหาร" : "หัวหน้า"}อนุมัติ` });
-    setReqDetail(""); setReqDate(""); setReqNewTime(""); setReqOtMinutes(""); setReqDays(1); setReqShiftId("");
+    setReqMsg({ ok: true, text: `ส่งคำขอแล้ว — รอ${reqType === "time_edit" ? "ผู้บริหาร" : "หัวหน้า"}อนุมัติ` });
+    setReqDetail(""); setReqDate(""); setReqNewTime(""); setReqDays(1); setReqShiftId("");
     refreshReqHistory();
   }
 
@@ -448,7 +442,7 @@ export default function Timesheet({ employee }) {
         </Card>
       )}
 
-      {/* ยื่นคำขอ (ลา/เปลี่ยนกะ/แก้เวลา/แก้ OT) → เข้าคิวให้อนุมัติ, อนุมัติแล้วมีผลจริงทันที */}
+      {/* ยื่นคำขอ (ลา/เปลี่ยนกะ/แก้เวลา) → เข้าคิวให้อนุมัติ, อนุมัติแล้วมีผลจริงทันที · ขอ OT แยกไปหน้า "โอที" */}
       <Card>
         <h2 className="mb-2 text-sm font-semibold text-slate-700">ยื่นคำขอถึงหัวหน้า</h2>
         <form onSubmit={sendRequest} className="space-y-3">
@@ -493,13 +487,6 @@ export default function Timesheet({ employee }) {
             </div>
           )}
 
-          {reqType === "ot_edit" && (
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="วันที่"><input type="date" className={inputCls} value={reqDate} onChange={(e) => setReqDate(e.target.value)} /></Field>
-              <Field label="จำนวน OT (นาที)"><input type="number" min="1" className={inputCls} value={reqOtMinutes} onChange={(e) => setReqOtMinutes(e.target.value)} /></Field>
-            </div>
-          )}
-
           <Field label="หมายเหตุ (ถ้ามี)">
             <input value={reqDetail} onChange={(e) => setReqDetail(e.target.value)} className={inputCls} placeholder="เช่น เหตุผลเพิ่มเติม" />
           </Field>
@@ -508,7 +495,7 @@ export default function Timesheet({ employee }) {
           <button type="submit" disabled={reqBusy} className={`w-full rounded-xl py-2.5 text-sm font-semibold text-white ${reqBusy ? "bg-slate-300" : "bg-sky-600 active:bg-sky-700"}`}>
             {reqBusy ? "กำลังส่ง…" : "ส่งคำขอ"}
           </button>
-          <p className="text-xs text-slate-400">“แก้เวลาทำงาน/แก้ OT” หัวหน้าอนุมัติไม่ได้ ต้องผู้บริหาร (ตามกติกา) — อนุมัติแล้วระบบแก้เวลา/เปลี่ยนกะ/เพิ่ม OT/หักวันลาให้อัตโนมัติ</p>
+          <p className="text-xs text-slate-400">“แก้เวลาทำงาน” หัวหน้าอนุมัติไม่ได้ ต้องผู้บริหาร (ตามกติกา) — อนุมัติแล้วระบบแก้เวลา/เปลี่ยนกะ/หักวันลาให้อัตโนมัติ · ขอ OT ไปที่แท็บ “โอที”</p>
         </form>
       </Card>
       </>

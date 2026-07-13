@@ -105,8 +105,11 @@ export function buildCalendar(logs, shift, offDays, period) {
   return days;
 }
 
+// อัตรา OT ต่อชั่วโมงของพนักงานคนนั้น — ไม่ได้ตั้งไว้ = ใช้อัตรามาตรฐาน (ตั้งได้รายคนที่หน้าโอที)
+export const otRateFor = (emp) => Number(emp?.ot_rate) || RULES.otRatePerHour;
+
 // สรุปยอดสำหรับคิดเงินเดือน — waivers: Map<dateKey, 'late'|'absent'|'both'> (ยกเว้นไม่หัก)
-export function summarizePayroll(days, waivers) {
+export function summarizePayroll(days, waivers, otRate = RULES.otRatePerHour) {
   let lateTotal = 0, absentDays = 0, otTotalMin = 0, workedTotalMin = 0, presentDays = 0;
   for (const d of days) {
     if (d.present) { presentDays++; workedTotalMin += d.workedMin; otTotalMin += d.otMin; }
@@ -117,15 +120,15 @@ export function summarizePayroll(days, waivers) {
   const lateChargeable = Math.max(0, lateTotal - RULES.lateGraceMinutesPerMonth);
   const lateDeduct = lateChargeable * RULES.lateRatePerMinute;
   const otHours = otTotalMin / 60;
-  const otPay = otHours * RULES.otRatePerHour;
+  const otPay = otHours * otRate;
   return { lateTotal, absentDays, otTotalMin, workedTotalMin, presentDays, lateChargeable, lateDeduct, otHours, otPay };
 }
 
 // รวม OT ที่อนุมัติแบบ manual (จากคำขอ "แก้ OT" ที่ผู้บริหารอนุมัติ) เข้ากับ OT ที่คำนวณจากตอกบัตร
-export function applyManualOt(att, manualMinutes) {
+export function applyManualOt(att, manualMinutes, otRate = RULES.otRatePerHour) {
   const otTotalMin = (att.otTotalMin || 0) + (manualMinutes || 0);
   const otHours = otTotalMin / 60;
-  const otPay = otHours * RULES.otRatePerHour;
+  const otPay = otHours * otRate;
   return { ...att, otTotalMin, otHours, otPay };
 }
 
@@ -136,7 +139,7 @@ export function computePayslip(emp, att, deducts, carryIn = 0) {
   const dailyWage = emp.pay_type === "daily" ? emp.base_salary : emp.base_salary / RULES.workDaysPerMonth;
   const base = emp.pay_type === "daily" ? emp.base_salary * (att.presentDays || 0) : emp.base_salary;
 
-  const otPay = (att.otHours || 0) * RULES.otRatePerHour;
+  const otPay = (att.otHours || 0) * otRateFor(emp);
   const grossEarnings = base + otPay;
 
   const lateChargeable = Math.max(0, (att.lateTotal || 0) - RULES.lateGraceMinutesPerMonth);

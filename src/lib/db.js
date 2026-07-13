@@ -274,6 +274,8 @@ export async function updateEmployee(id, patch) {
     p_leave_sick_quota: patch.leave_sick_quota ?? null,
     p_leave_personal_quota: patch.leave_personal_quota ?? null,
     p_leave_vacation_quota: patch.leave_vacation_quota ?? null,
+    p_ot_rate: patch.ot_rate ?? null,
+    p_clear_ot_rate: patch.clearOtRate ?? false,
   });
   if (error) { console.error("updateEmployee:", error.message); return { error: error.message }; }
   return { ok: true };

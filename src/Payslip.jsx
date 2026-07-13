@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { listEmployees, fetchOrg, fetchPeriodPunches, listDeductionsForEmployee, getCarry, saveCarry, listWaiversRange, getManualOtMinutes } from "./lib/db.js";
 import { isSupabaseReady } from "./lib/supabase.js";
 import { DEMO_EMPLOYEES, DEMO_ORG, demoPunches, demoDeductions } from "./lib/demo.js";
-import { PERIODS, monthRange, buildCalendar, summarizePayroll, applyManualOt, computePayslip, nextPeriodLabel, currentPeriod, baht, round2 } from "./lib/payroll.js";
+import { PERIODS, monthRange, buildCalendar, summarizePayroll, applyManualOt, computePayslip, nextPeriodLabel, currentPeriod, baht, round2, otRateFor } from "./lib/payroll.js";
 import { isManager } from "./lib/rules.js";
 import { Page, PageHeader, Card, Select, Field, DemoTag } from "./ui.jsx";
 
@@ -62,7 +62,7 @@ export default function Payslip({ employee }) {
   }, [viewId, period, emp?.id]);
 
   const days = useMemo(() => buildCalendar(logs, shift, emp?.off_days, period), [logs, shift, emp?.off_days, period]);
-  const att = useMemo(() => applyManualOt(summarizePayroll(days, waivers), manualOtMin), [days, waivers, manualOtMin]);
+  const att = useMemo(() => applyManualOt(summarizePayroll(days, waivers, otRateFor(emp)), manualOtMin, otRateFor(emp)), [days, waivers, manualOtMin, emp]);
   const c = useMemo(() => computePayslip(emp || {}, att, deducts, carryIn), [emp, att, deducts, carryIn]);
 
   const nextP = nextPeriodLabel(period.label);

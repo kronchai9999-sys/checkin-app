@@ -429,7 +429,10 @@ export default function Timesheet({ employee }) {
             {reqHistory.map((r) => (
               <div key={r.id} className="py-2 text-sm">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-slate-700">{REQUEST_TYPE_LABEL[r.request_type] || r.request_type}</span>
+                  <span className="font-medium text-slate-700">
+                    {REQUEST_TYPE_LABEL[r.request_type] || r.request_type}
+                    <span className="ml-1 font-normal text-slate-400">· ขอโดย {emp?.name}</span>
+                  </span>
                   <span className={r.status === "approved" ? "text-emerald-600" : r.status === "rejected" ? "text-rose-500" : "text-amber-600"}>
                     {r.status === "approved" ? "อนุมัติแล้ว" : r.status === "rejected" ? "ไม่อนุมัติ" : "รออนุมัติ"}
                     {r.approver_name ? ` โดย ${r.approver_name}` : ""}

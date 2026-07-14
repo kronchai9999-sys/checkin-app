@@ -187,7 +187,10 @@ export default function OT({ employee }) {
             {history.map((r) => (
               <div key={r.id} className="py-2 text-sm">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-700">{r.detail}</span>
+                  <span className="text-slate-700">
+                    {r.detail}
+                    <span className="ml-1 text-xs text-slate-400">· ขอโดย {emp?.name}</span>
+                  </span>
                   <span className={r.status === "approved" ? "text-emerald-600" : r.status === "rejected" ? "text-rose-500" : "text-amber-600"}>
                     {r.status === "approved" ? "อนุมัติแล้ว" : r.status === "rejected" ? "ไม่อนุมัติ" : "รออนุมัติ"}
                     {r.approver_name ? ` โดย ${r.approver_name}` : ""}

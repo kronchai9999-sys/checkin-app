@@ -250,6 +250,8 @@ export default function CheckIn({ employee }) {
 
   const recIn = done.find((d) => d.key === "in");
   const recOut = done.find((d) => d.key === "out");
+  const recLunchOut = done.find((d) => d.key === "lunch_out");
+  const recLunchIn = done.find((d) => d.key === "lunch_in");
   const statusText = dayComplete ? "เลิกงานแล้ว" : recIn ? "กำลังทำงาน" : "ยังไม่เข้า";
   const isOut = current && current.compare === "out";   // ปุ่มเช็คเอา = สีฟ้า
   const accent = isOut ? "sky" : "emerald";
@@ -280,6 +282,12 @@ export default function CheckIn({ employee }) {
             <SummaryCell label="เลิกงาน" value={recOut ? recOut.timeStr : "—"} sub={recOut?.status?.label} />
             <SummaryCell label="สถานะ" value={statusText} strong />
           </div>
+          {(recLunchOut || recLunchIn) && (
+            <div className="grid grid-cols-2 divide-x divide-white/20 border-t border-white/20 bg-white/10 text-center">
+              <SummaryCell label="พักออก" value={recLunchOut ? recLunchOut.timeStr : "—"} />
+              <SummaryCell label="พักเข้า" value={recLunchIn ? recLunchIn.timeStr : "—"} />
+            </div>
+          )}
         </div>
 
         {/* สาขา (กะถูกล็อก) */}

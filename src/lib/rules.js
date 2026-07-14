@@ -6,7 +6,7 @@ export const RULES = {
   otRatePerHour: 25,            // OT บาท/ชม.
   lunchFreeMinutes: 60,         // หลังร้าน: พักเที่ยง ≤ 60 นาที ไม่หักเงิน           (req 5)
   lateGraceMinutesPerMonth: 10, // ผ่อนผันสายสะสมทั้งงวด (นาที)
-  lateRatePerMinute: 5,         // ส่วนเกินผ่อนผัน หักนาทีละ (บาท)
+  lateRatePerMinute: 1,         // ส่วนเกินผ่อนผัน หักนาทีละ (บาท)
   ssoRate: 0.05,
   ssoCapBase: 15000,
   workDaysPerMonth: 26,

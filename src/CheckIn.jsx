@@ -331,10 +331,12 @@ export default function CheckIn({ employee }) {
           ) : (
             <>
               {skipGps ? (
-                /* ไม่ต้องจับ GPS: พักเที่ยงหลังร้าน (req 5) หรือ ออฟไลน์ */
-                <div className={`mx-auto mb-4 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${!online ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700"}`}>
-                  {!online ? "📴 ออฟไลน์ — บันทึกเวลาโดยไม่เช็ค GPS" : "🍜 พักเที่ยง — ไม่ต้องเช็ค GPS (พักไม่เกิน 1 ชม. ไม่หักเงิน)"}
-                </div>
+                /* ไม่ต้องจับ GPS: พักเที่ยงหลังร้าน (req 5) หรือ ออฟไลน์ — พักเที่ยงไม่โชว์ข้อความอธิบาย (ตามคำขอ) */
+                !online ? (
+                  <div className="mx-auto mb-4 flex items-center gap-2 rounded-full bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700">
+                    📴 ออฟไลน์ — บันทึกเวลาโดยไม่เช็ค GPS
+                  </div>
+                ) : null
               ) : (
                 <>
                   {/* แถบสถานะ GPS */}
